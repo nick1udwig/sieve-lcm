@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use regex::Regex;
 use parking_lot::Mutex;
 use rusqlite::params;
 use serde_json::Value;
@@ -513,6 +514,7 @@ async fn compaction_creates_leaf_summary_from_oldest_messages() {
         .sum_store
         .get_summaries_by_conversation(h.conversation_id)
         .expect("summaries");
+    assert!(!all_summaries.is_empty());
     let leaf_summary = all_summaries
         .iter()
         .find(|summary| matches!(summary.kind, SummaryKind::Leaf))
@@ -602,6 +604,7 @@ async fn compact_leaf_uses_preceding_summary_context_for_soft_leaf_continuity() 
         .expect("compact leaf");
 
     assert!(result.action_taken);
+    assert!(calls.lock().len() >= 1);
     let first = calls.lock().first().cloned().flatten().expect("call options");
     assert_eq!(
         first.previous_summary,
@@ -1166,6 +1169,7 @@ async fn depth_aware_condensation_sets_condensed_depth_to_max_parent_depth_plus_
         .expect("compact");
 
     assert!(result.action_taken);
+    assert!(result.created_summary_id.is_some());
     let created = h
         .sum_store
         .get_summary(
@@ -1322,8 +1326,8 @@ async fn depth_aware_phase_two_processes_shallowest_eligible_depth_first() {
         .first()
         .cloned()
         .expect("first summarize input");
-    assert!(first_source.starts_with('['));
-    assert!(first_source.contains("UTC -"));
+    let span_re = Regex::new(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC - \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC\]").expect("span regex");
+    assert!(span_re.is_match(&first_source));
     assert!(first_source.contains("L0-A leaf context"));
     assert!(first_source.contains("L0-B leaf context"));
     assert!(!first_source.contains("D1-A existing condensed context"));

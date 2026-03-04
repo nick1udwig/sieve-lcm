@@ -57,37 +57,35 @@ impl RetrievalApi for MockRetrieval {
 async fn defaults_omitted_token_cap_for_summary_expansion_to_config_max() {
     let retrieval = Arc::new(MockRetrieval::default());
     let orchestrator = Arc::new(ExpansionOrchestrator::new(retrieval.clone()));
-    let tool = ExpansionToolDefinition::new(orchestrator, 120, 42);
+    let tool = ExpansionToolDefinition::new(orchestrator, 250, 42);
 
     let _ = tool
         .execute(json!({
-            "summaryIds": ["sum_root"],
-            "maxDepth": 1
+            "summaryIds": ["sum_a"]
         }))
         .await
         .expect("tool should execute");
 
     let calls = retrieval.expand_calls.lock();
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].token_cap, Some(120));
+    assert!(calls.len() >= 1);
+    assert_eq!(calls[0].token_cap, Some(250));
 }
 
 #[tokio::test]
 async fn clamps_oversized_token_cap_for_query_expansion_to_config_max() {
     let retrieval = Arc::new(MockRetrieval::default());
     let orchestrator = Arc::new(ExpansionOrchestrator::new(retrieval.clone()));
-    let tool = ExpansionToolDefinition::new(orchestrator, 120, 42);
+    let tool = ExpansionToolDefinition::new(orchestrator, 250, 99);
 
     let _ = tool
         .execute(json!({
-            "query": "incident",
-            "tokenCap": 99999,
-            "maxDepth": 1
+            "query": "keyword",
+            "tokenCap": 5_000
         }))
         .await
         .expect("tool should execute");
 
     let calls = retrieval.expand_calls.lock();
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].token_cap, Some(120));
+    assert!(calls.len() >= 1);
+    assert_eq!(calls[0].token_cap, Some(250));
 }

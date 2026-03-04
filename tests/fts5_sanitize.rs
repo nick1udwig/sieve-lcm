@@ -21,13 +21,13 @@ fn strips_internal_double_quotes() {
 }
 
 #[test]
-fn handles_colons() {
-    assert_eq!(sanitize_fts5_query("agent:foo"), "\"agent:foo\"");
+fn handles_colons_column_filter_syntax() {
+    assert_eq!(sanitize_fts5_query("agent:foo bar"), "\"agent:foo\" \"bar\"");
 }
 
 #[test]
 fn handles_prefix_star_operator() {
-    assert_eq!(sanitize_fts5_query("deploy*"), "\"deploy*\"");
+    assert_eq!(sanitize_fts5_query("lcm*"), "\"lcm*\"");
 }
 
 #[test]
@@ -42,7 +42,7 @@ fn handles_whitespace_only() {
 
 #[test]
 fn handles_single_token() {
-    assert_eq!(sanitize_fts5_query("hello"), "\"hello\"");
+    assert_eq!(sanitize_fts5_query("expand"), "\"expand\"");
 }
 
 #[test]
@@ -52,12 +52,12 @@ fn collapses_multiple_spaces() {
 
 #[test]
 fn handles_not_operator() {
-    assert_eq!(sanitize_fts5_query("foo NOT bar"), "\"foo\" \"NOT\" \"bar\"");
+    assert_eq!(sanitize_fts5_query("NOT agent"), "\"NOT\" \"agent\"");
 }
 
 #[test]
 fn handles_near_operator() {
-    assert_eq!(sanitize_fts5_query("foo NEAR bar"), "\"foo\" \"NEAR\" \"bar\"");
+    assert_eq!(sanitize_fts5_query("NEAR(a b)"), "\"NEAR(a\" \"b)\"");
 }
 
 #[test]

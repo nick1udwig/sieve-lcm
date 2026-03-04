@@ -414,6 +414,18 @@ async fn returns_focused_delegated_answer_for_explicit_summary_ids() {
         result.details.get("sourceConversationId").and_then(Value::as_i64),
         Some(42)
     );
+    assert_eq!(
+        result.details.get("expandedSummaryCount").and_then(Value::as_i64),
+        Some(1)
+    );
+    assert_eq!(
+        result.details.get("totalSourceTokens").and_then(Value::as_i64),
+        Some(45000)
+    );
+    assert_eq!(
+        result.details.get("truncated").and_then(Value::as_bool),
+        Some(false)
+    );
 
     let agent_call = gateway_calls
         .lock()
