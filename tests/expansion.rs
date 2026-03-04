@@ -1,0 +1,93 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use chrono::Utc;
+use parking_lot::Mutex;
+use serde_json::json;
+use sieve_lcm::expansion::{
+    ExpansionOrchestrator, ExpansionToolDefinition,
+};
+use sieve_lcm::retrieval::{
+    DescribeResult, ExpandInput, ExpandResult, ExpandedChild, GrepInput, GrepResult, RetrievalApi,
+};
+
+#[derive(Default)]
+struct MockRetrieval {
+    expand_calls: Mutex<Vec<ExpandInput>>,
+}
+
+#[async_trait]
+impl RetrievalApi for MockRetrieval {
+    async fn describe(&self, _id: &str) -> anyhow::Result<Option<DescribeResult>> {
+        Ok(None)
+    }
+
+    async fn grep(&self, _input: GrepInput) -> anyhow::Result<GrepResult> {
+        Ok(GrepResult {
+            messages: vec![],
+            summaries: vec![sieve_lcm::store::summary_store::SummarySearchResult {
+                summary_id: "sum_a".to_string(),
+                conversation_id: 42,
+                kind: sieve_lcm::store::summary_store::SummaryKind::Leaf,
+                snippet: "snippet".to_string(),
+                created_at: Utc::now(),
+                rank: Some(0.0),
+            }],
+            total_matches: 1,
+        })
+    }
+
+    async fn expand(&self, input: ExpandInput) -> anyhow::Result<ExpandResult> {
+        self.expand_calls.lock().push(input);
+        Ok(ExpandResult {
+            children: vec![ExpandedChild {
+                summary_id: "sum_child".to_string(),
+                kind: sieve_lcm::store::summary_store::SummaryKind::Leaf,
+                content: "content".to_string(),
+                token_count: 3,
+            }],
+            messages: vec![],
+            estimated_tokens: 3,
+            truncated: false,
+        })
+    }
+}
+
+#[tokio::test]
+async fn defaults_omitted_token_cap_for_summary_expansion_to_config_max() {
+    let retrieval = Arc::new(MockRetrieval::default());
+    let orchestrator = Arc::new(ExpansionOrchestrator::new(retrieval.clone()));
+    let tool = ExpansionToolDefinition::new(orchestrator, 120, 42);
+
+    let _ = tool
+        .execute(json!({
+            "summaryIds": ["sum_root"],
+            "maxDepth": 1
+        }))
+        .await
+        .expect("tool should execute");
+
+    let calls = retrieval.expand_calls.lock();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].token_cap, Some(120));
+}
+
+#[tokio::test]
+async fn clamps_oversized_token_cap_for_query_expansion_to_config_max() {
+    let retrieval = Arc::new(MockRetrieval::default());
+    let orchestrator = Arc::new(ExpansionOrchestrator::new(retrieval.clone()));
+    let tool = ExpansionToolDefinition::new(orchestrator, 120, 42);
+
+    let _ = tool
+        .execute(json!({
+            "query": "incident",
+            "tokenCap": 99999,
+            "maxDepth": 1
+        }))
+        .await
+        .expect("tool should execute");
+
+    let calls = retrieval.expand_calls.lock();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].token_cap, Some(120));
+}
