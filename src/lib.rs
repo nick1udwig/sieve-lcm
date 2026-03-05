@@ -1,3 +1,4 @@
+pub mod cli;
 pub mod assembler;
 pub mod compaction;
 pub mod complete_options;
