@@ -211,7 +211,15 @@ fn snippet_from_content(content: &str, max_len: usize) -> String {
     if compact.len() <= max_len {
         compact
     } else {
-        format!("{}...", &compact[..max_len.saturating_sub(3)])
+        let head_limit = max_len.saturating_sub(3);
+        let mut cut = 0usize;
+        for (idx, _) in compact.char_indices() {
+            if idx > head_limit {
+                break;
+            }
+            cut = idx;
+        }
+        format!("{}...", &compact[..cut])
     }
 }
 

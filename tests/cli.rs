@@ -88,6 +88,54 @@ fn query_both_returns_trusted_text_and_untrusted_refs_only() {
 }
 
 #[test]
+fn query_handles_utf8_snippet_boundaries_without_panicking() {
+    let tmp = tempdir().expect("create tempdir");
+    let trusted_db = tmp.path().join("trusted.db");
+
+    // Put a multibyte rune right across the old byte-slice boundary.
+    let mut content = "a".repeat(196);
+    content.push('–');
+    content.push_str(" Livermore utf8 snippet regression payload");
+
+    run_cli(&[
+        "ingest",
+        "--db",
+        trusted_db.to_str().expect("trusted path utf8"),
+        "--conversation",
+        "global",
+        "--role",
+        "user",
+        "--content",
+        &content,
+        "--json",
+    ])
+    .expect("trusted ingest should succeed");
+
+    let output = run_cli(&[
+        "query",
+        "--trusted-db",
+        trusted_db.to_str().expect("trusted path utf8"),
+        "--conversation",
+        "global",
+        "--query",
+        "Livermore",
+        "--lane",
+        "trusted",
+        "--json",
+    ])
+    .expect("query should succeed");
+
+    let CliSuccess::Query(output) = output else {
+        panic!("expected query output")
+    };
+    assert!(!output.trusted_hits.is_empty(), "expected trusted hit");
+    assert!(
+        output.trusted_hits[0].excerpt.ends_with("..."),
+        "long unicode content should be truncated safely with ellipsis"
+    );
+}
+
+#[test]
 fn expand_resolves_untrusted_ref_content() {
     let tmp = tempdir().expect("create tempdir");
     let untrusted_db = tmp.path().join("untrusted.db");
