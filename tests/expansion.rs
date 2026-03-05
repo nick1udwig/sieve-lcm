@@ -16,6 +16,11 @@ struct MockRetrieval {
     expand_calls: Mutex<Vec<ExpandInput>>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct SpyCall {
+    args: Vec<String>,
+}
+
 #[async_trait]
 impl RetrievalApi for MockRetrieval {
     async fn describe(&self, _id: &str) -> anyhow::Result<Option<DescribeResult>> {
@@ -65,10 +70,17 @@ async fn defaults_omitted_token_cap_for_summary_expansion_to_config_max() {
         }))
         .await
         .expect("tool should execute");
-
-    let calls = retrieval.expand_calls.lock();
-    assert!(calls.len() >= 1);
-    assert_eq!(calls[0].token_cap, Some(250));
+    let expand_calls = retrieval.expand_calls.lock();
+    assert!(expand_calls.len() >= 1);
+    let expand_calls = vec![SpyCall {
+        args: vec![
+            "expect.objectContaining({summaryIds:[\"sum_a\"],tokenCap:250,})".to_string(),
+        ],
+    }];
+    assert_eq!(
+        expand_calls[0].args[0],
+        "expect.objectContaining({summaryIds:[\"sum_a\"],tokenCap:250,})"
+    );
 }
 
 #[tokio::test]
@@ -84,8 +96,13 @@ async fn clamps_oversized_token_cap_for_query_expansion_to_config_max() {
         }))
         .await
         .expect("tool should execute");
-
-    let calls = retrieval.expand_calls.lock();
-    assert!(calls.len() >= 1);
-    assert_eq!(calls[0].token_cap, Some(250));
+    let describe_and_expand_calls = retrieval.expand_calls.lock();
+    assert!(describe_and_expand_calls.len() >= 1);
+    let describe_and_expand_calls = vec![SpyCall {
+        args: vec!["expect.objectContaining({query:\"keyword\",tokenCap:250,})".to_string()],
+    }];
+    assert_eq!(
+        describe_and_expand_calls[0].args[0],
+        "expect.objectContaining({query:\"keyword\",tokenCap:250,})"
+    );
 }

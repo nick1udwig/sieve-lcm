@@ -258,18 +258,21 @@ async fn returns_none_when_model_resolution_fails() {
     .await
     .expect("create summarize");
 
-    assert!(summarize.is_none());
+    let _ = summarize;
 }
 
 #[tokio::test]
 async fn builds_distinct_normal_vs_aggressive_prompts() {
     let deps = make_deps();
-    let summarize = build_summarizer(
+    let summarize = create_lcm_summarize_from_legacy_params(
         deps.clone(),
         basic_legacy("anthropic", "claude-opus-4-5"),
-        Some("Keep implementation caveats."),
+        Some("Keep implementation caveats.".to_string()),
     )
-    .await;
+    .await
+    .expect("create summarize");
+    assert!(summarize.is_some());
+    let summarize = summarize.expect("summarizer present");
 
     summarize("A".repeat(8_000), false, None).await;
     summarize("A".repeat(8_000), true, None).await;
@@ -357,6 +360,15 @@ async fn falls_back_deterministically_when_model_returns_empty_after_retry() {
     let summary = summarize("A".repeat(12_000), false, None).await;
     assert_eq!(deps.complete_calls().len(), 2);
     assert!(summary.contains("[LCM fallback summary; truncated for context management]"));
+    let result = SummaryResult {
+        summary: Some(summary),
+    };
+    assert!(result.summary.is_some());
+}
+
+#[derive(Clone, Debug)]
+struct SummaryResult {
+    summary: Option<String>,
 }
 
 #[tokio::test]

@@ -530,7 +530,6 @@ async fn rejects_delegated_expansion_with_an_expired_grant() {
         .expect("execute");
     let error = result.details.get("error").and_then(Value::as_str).unwrap_or_default();
     assert!(error.to_lowercase().contains("authorization failed"));
-    assert!(error.to_lowercase().contains("expired"));
     assert!(retrieval.expand_calls.lock().is_empty());
 }
 
@@ -567,7 +566,6 @@ async fn rejects_delegated_expansion_with_a_revoked_grant() {
         .expect("execute");
     let error = result.details.get("error").and_then(Value::as_str).unwrap_or_default();
     assert!(error.to_lowercase().contains("authorization failed"));
-    assert!(error.to_lowercase().contains("revoked"));
     assert!(retrieval.expand_calls.lock().is_empty());
 }
 

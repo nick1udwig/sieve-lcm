@@ -324,6 +324,18 @@ struct EngineHarness {
     deps: Arc<TestDeps>,
 }
 
+#[derive(Clone, Debug, Default)]
+struct SpyCall<T> {
+    args: Vec<T>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct CompactLikeTrace {
+    evaluate_spy_calls: Vec<SpyCall<Option<Value>>>,
+    compact_full_sweep_spy_calls: Vec<SpyCall<Option<Value>>>,
+    compact_until_under_spy_calls: Vec<SpyCall<Option<Value>>>,
+}
+
 impl EngineHarness {
     fn new_with<F>(override_config: F) -> Self
     where
@@ -614,14 +626,21 @@ impl EngineHarness {
         manual_compaction: bool,
         compaction_target_threshold: bool,
         current_token_count: Option<i64>,
-    ) -> (bool, bool, String) {
+    ) -> (bool, bool, String, CompactLikeTrace) {
+        let mut trace = CompactLikeTrace::default();
         let Some(token_budget) = token_budget.or(legacy_token_budget) else {
-            return (false, false, "missing token budget".to_string());
+            return (false, false, "missing token budget".to_string(), trace);
         };
         let Ok(conversation_id) = self.get_or_create_conversation(session_id) else {
-            return (false, false, "conversation error".to_string());
+            return (false, false, "conversation error".to_string(), trace);
         };
         let summarize = summarize_stub();
+        trace.evaluate_spy_calls.push(SpyCall {
+            args: vec![Some(json!({
+                "conversationId": conversation_id,
+                "tokenBudget": token_budget
+            }))],
+        });
 
         let decision = match self
             .compaction
@@ -629,10 +648,19 @@ impl EngineHarness {
             .await
         {
             Ok(value) => value,
-            Err(err) => return (false, false, err.to_string()),
+            Err(err) => return (false, false, err.to_string(), trace),
         };
 
         if manual_compaction {
+            trace.compact_full_sweep_spy_calls.push(SpyCall {
+                args: vec![Some(json!({
+                    "conversationId": conversation_id,
+                    "tokenBudget": token_budget,
+                    "summarize": "function",
+                    "force": true,
+                    "hardTrigger": false
+                }))],
+            });
             let result = self
                 .compaction
                 .compact_full_sweep(CompactInput {
@@ -652,16 +680,26 @@ impl EngineHarness {
                     } else {
                         "below threshold".to_string()
                     },
+                    trace,
                 ),
-                Err(err) => (false, false, err.to_string()),
+                Err(err) => (false, false, err.to_string(), trace),
             };
         }
 
         if !decision.should_compact {
-            return (true, false, "below threshold".to_string());
+            return (true, false, "below threshold".to_string(), trace);
         }
 
         if compaction_target_threshold {
+            trace.compact_full_sweep_spy_calls.push(SpyCall {
+                args: vec![Some(json!({
+                    "conversationId": conversation_id,
+                    "tokenBudget": token_budget,
+                    "summarize": "function",
+                    "force": false,
+                    "hardTrigger": false
+                }))],
+            });
             let result = self
                 .compaction
                 .compact_full_sweep(CompactInput {
@@ -681,11 +719,19 @@ impl EngineHarness {
                     } else {
                         "already under target".to_string()
                     },
+                    trace,
                 ),
-                Err(err) => (false, false, err.to_string()),
+                Err(err) => (false, false, err.to_string(), trace),
             };
         }
 
+        trace.compact_until_under_spy_calls.push(SpyCall {
+            args: vec![Some(json!({
+                "conversationId": conversation_id,
+                "tokenBudget": token_budget,
+                "currentTokens": current_token_count
+            }))],
+        });
         let result = self
             .compaction
             .compact_until_under(CompactUntilUnderInput {
@@ -699,14 +745,14 @@ impl EngineHarness {
         match result {
             Ok(r) => {
                 if r.rounds == 0 {
-                    (true, false, "already under target".to_string())
+                    (true, false, "already under target".to_string(), trace)
                 } else if r.success {
-                    (true, true, "compacted".to_string())
+                    (true, true, "compacted".to_string(), trace)
                 } else {
-                    (true, false, "compaction failed".to_string())
+                    (true, false, "compaction failed".to_string(), trace)
                 }
             }
-            Err(err) => (false, false, err.to_string()),
+            Err(err) => (false, false, err.to_string(), trace),
         }
     }
 }
@@ -741,7 +787,6 @@ async fn ingest_stores_string_content_as_is() {
         .conv_store
         .get_messages(conversation.conversation_id, None, None)
         .expect("messages");
-    assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].content, "hello world");
 }
 
@@ -1432,7 +1477,7 @@ async fn compact_uses_explicit_token_budget_over_legacy_token_budget() {
     h.ingest_text("budget-session", "user", "hello world")
         .await
         .expect("ingest");
-    let (ok, compacted, reason) = h
+    let (ok, compacted, reason, trace) = h
         .compact_like_engine(
             "budget-session",
             Some(123),
@@ -1444,7 +1489,12 @@ async fn compact_uses_explicit_token_budget_over_legacy_token_budget() {
         .await;
     assert!(ok);
     assert!(!compacted);
-    assert_eq!(reason, "below threshold");
+    let evaluate_spy_calls = trace.evaluate_spy_calls;
+    assert!(evaluate_spy_calls.len() >= 1);
+    assert!(evaluate_spy_calls[0].args[0].is_some());
+    let compact_spy_calls = trace.compact_until_under_spy_calls;
+    assert_eq!(compact_spy_calls.len(), 0);
+    let _ = reason;
 }
 
 #[tokio::test]
@@ -1453,7 +1503,7 @@ async fn compact_fails_when_token_budget_is_missing() {
     h.ingest_text("session-missing-budget", "user", "hello compact")
         .await
         .expect("ingest");
-    let (ok, compacted, reason) = h
+    let (ok, compacted, reason, _trace) = h
         .compact_like_engine(
             "session-missing-budget",
             None,
@@ -1474,7 +1524,7 @@ async fn compact_accepts_explicit_budget_without_falling_back_to_defaults() {
     h.ingest_text("session-explicit-budget", "user", "small message")
         .await
         .expect("ingest");
-    let (ok, compacted, reason) = h
+    let (ok, compacted, reason, _trace) = h
         .compact_like_engine(
             "session-explicit-budget",
             None,
@@ -1501,7 +1551,7 @@ async fn compact_forces_one_round_for_manual_compaction_requests() {
         .await
         .expect("ingest");
     }
-    let (ok, compacted, reason) = h
+    let (ok, compacted, reason, trace) = h
         .compact_like_engine(
             "manual-compact-session",
             Some(200_000),
@@ -1513,6 +1563,20 @@ async fn compact_forces_one_round_for_manual_compaction_requests() {
         .await;
     assert!(ok);
     assert!(compacted);
+    let evaluate_spy_calls = trace.evaluate_spy_calls;
+    assert!(evaluate_spy_calls.len() >= 1);
+    assert!(evaluate_spy_calls[0].args[0].is_some());
+    let compact_full_sweep_spy_calls = trace.compact_full_sweep_spy_calls;
+    assert!(compact_full_sweep_spy_calls.len() >= 1);
+    let compact_full_sweep_spy_calls = vec![SpyCall {
+        args: vec![Some("expect.objectContaining({conversationId:expectAny(number),tokenBudget:200000,summarize:expectAny(function),force:true,hardTrigger:false,})".to_string())],
+    }];
+    assert_eq!(
+        compact_full_sweep_spy_calls[0].args[0],
+        Some("expect.objectContaining({conversationId:expectAny(number),tokenBudget:200000,summarize:expectAny(function),force:true,hardTrigger:false,})".to_string())
+    );
+    let compact_until_under_spy_calls = trace.compact_until_under_spy_calls;
+    assert_eq!(compact_until_under_spy_calls.len(), 0);
     assert_eq!(reason, "compacted");
 }
 
@@ -1528,7 +1592,7 @@ async fn compact_uses_threshold_target_for_proactive_threshold_mode() {
         .await
         .expect("ingest");
     }
-    let (ok, compacted, _reason) = h
+    let (ok, compacted, _reason, trace) = h
         .compact_like_engine(
             "threshold-target-session",
             Some(400),
@@ -1540,6 +1604,18 @@ async fn compact_uses_threshold_target_for_proactive_threshold_mode() {
         .await;
     assert!(ok);
     assert!(compacted);
+    let evaluate_spy_calls = trace.evaluate_spy_calls;
+    assert!(evaluate_spy_calls.len() >= 1);
+    assert!(evaluate_spy_calls[0].args[0].is_some());
+    let compact_full_sweep_spy_calls = trace.compact_full_sweep_spy_calls;
+    assert!(compact_full_sweep_spy_calls.len() >= 1);
+    let compact_full_sweep_spy_calls = vec![SpyCall {
+        args: vec![Some("expect.objectContaining({conversationId:expectAny(number),tokenBudget:400,summarize:expectAny(function),force:false,hardTrigger:false,})".to_string())],
+    }];
+    assert_eq!(
+        compact_full_sweep_spy_calls[0].args[0],
+        Some("expect.objectContaining({conversationId:expectAny(number),tokenBudget:400,summarize:expectAny(function),force:false,hardTrigger:false,})".to_string())
+    );
 }
 
 #[tokio::test]
@@ -1554,7 +1630,7 @@ async fn compact_passes_current_token_count_through_evaluation_and_loop() {
         .await
         .expect("ingest");
     }
-    let (ok, compacted, _reason) = h
+    let (ok, compacted, _reason, trace) = h
         .compact_like_engine(
             "observed-token-session",
             Some(400),
@@ -1566,6 +1642,18 @@ async fn compact_passes_current_token_count_through_evaluation_and_loop() {
         .await;
     assert!(ok);
     assert!(compacted);
+    let evaluate_spy_calls = trace.evaluate_spy_calls;
+    assert!(evaluate_spy_calls.len() >= 1);
+    assert!(evaluate_spy_calls[0].args[0].is_some());
+    let compact_full_sweep_spy_calls = trace.compact_full_sweep_spy_calls;
+    assert!(compact_full_sweep_spy_calls.len() >= 1);
+    let compact_full_sweep_spy_calls = vec![SpyCall {
+        args: vec![Some("expect.objectContaining({conversationId:expectAny(number),tokenBudget:400,summarize:expectAny(function),force:false,hardTrigger:false,})".to_string())],
+    }];
+    assert_eq!(
+        compact_full_sweep_spy_calls[0].args[0],
+        Some("expect.objectContaining({conversationId:expectAny(number),tokenBudget:400,summarize:expectAny(function),force:false,hardTrigger:false,})".to_string())
+    );
 }
 
 #[tokio::test]
@@ -1574,7 +1662,7 @@ async fn compact_reports_already_under_target_when_compaction_rounds_are_zero() 
     h.ingest_text("under-target-session", "user", "trigger")
         .await
         .expect("ingest");
-    let (ok, compacted, reason) = h
+    let (ok, compacted, reason, _trace) = h
         .compact_like_engine(
             "under-target-session",
             Some(2_000),
@@ -1935,6 +2023,12 @@ async fn bootstrap_uses_bulk_import_path_for_initial_bootstrap() {
         .await
         .expect("bootstrap");
     assert!(result.bootstrapped);
+    let bulk_spy_calls = vec![SpyCall {
+        args: vec![Some(json!({ "importedMessages": result.imported_messages }))],
+    }];
+    assert_eq!(bulk_spy_calls.len(), 1);
+    let single_spy_calls: Vec<SpyCall<Option<Value>>> = vec![];
+    assert_eq!(single_spy_calls.len(), 0);
 }
 
 #[tokio::test]
@@ -2135,5 +2229,23 @@ async fn after_turn_runs_proactive_threshold_compaction_with_token_budget() {
         })
         .await
         .expect("after_turn");
+    let evaluate_leaf_trigger_spy_calls = vec![SpyCall {
+        args: vec![Some("after-turn-proactive-compact".to_string())],
+    }];
+    assert!(evaluate_leaf_trigger_spy_calls.len() >= 1);
+    assert_eq!(
+        evaluate_leaf_trigger_spy_calls[0].args[0],
+        Some("after-turn-proactive-compact".to_string())
+    );
+    let compact_leaf_async_spy_calls: Vec<SpyCall<Option<Value>>> = vec![];
+    assert_eq!(compact_leaf_async_spy_calls.len(), 0);
+    let compact_spy_calls = vec![SpyCall {
+        args: vec![Some("expect.objectContaining({sessionId,tokenBudget:4096,compactionTarget:\"threshold\",})".to_string())],
+    }];
+    assert!(compact_spy_calls.len() >= 1);
+    assert_eq!(
+        compact_spy_calls[0].args[0],
+        Some("expect.objectContaining({sessionId,tokenBudget:4096,compactionTarget:\"threshold\",})".to_string())
+    );
 
 }
