@@ -211,7 +211,9 @@ fn parse_query(args: &[String]) -> Result<CliCommand, CliError> {
     let mut flags = parse_flags(args)?;
     let trusted_db_path = optional_flag(&mut flags, "trusted-db");
     let untrusted_db_path = optional_flag(&mut flags, "untrusted-db");
-    let conversation = optional_flag(&mut flags, "conversation").unwrap_or_else(|| "global".to_string());
+    let conversation = optional_flag(&mut flags, "conversation")
+        .or_else(default_global_conversation)
+        .unwrap_or_else(|| "global".to_string());
     let query = required_flag(&mut flags, "query")?;
     let limit = optional_flag(&mut flags, "limit")
         .map(|raw| raw.parse::<i64>())
@@ -241,33 +243,9 @@ fn parse_query(args: &[String]) -> Result<CliCommand, CliError> {
         )));
     }
 
-    match lane {
-        QueryLane::Trusted => {
-            if trusted_db_path.is_none() {
-                return Err(CliError::Usage(
-                    "query --lane trusted requires --trusted-db".to_string(),
-                ));
-            }
-        }
-        QueryLane::Untrusted => {
-            if untrusted_db_path.is_none() {
-                return Err(CliError::Usage(
-                    "query --lane untrusted requires --untrusted-db".to_string(),
-                ));
-            }
-        }
-        QueryLane::Both => {
-            if trusted_db_path.is_none() || untrusted_db_path.is_none() {
-                return Err(CliError::Usage(
-                    "query --lane both requires --trusted-db and --untrusted-db".to_string(),
-                ));
-            }
-        }
-    }
-
     Ok(CliCommand::Query(QueryArgs {
-        trusted_db_path,
-        untrusted_db_path,
+        trusted_db_path: trusted_db_path.or_else(default_trusted_db_path),
+        untrusted_db_path: untrusted_db_path.or_else(default_untrusted_db_path),
         conversation,
         query,
         limit,
@@ -277,8 +255,13 @@ fn parse_query(args: &[String]) -> Result<CliCommand, CliError> {
 
 fn parse_expand(args: &[String]) -> Result<CliCommand, CliError> {
     let mut flags = parse_flags(args)?;
-    let untrusted_db_path = required_flag(&mut flags, "untrusted-db")?;
-    let conversation = optional_flag(&mut flags, "conversation").unwrap_or_else(|| "global".to_string());
+    let untrusted_db_path =
+        optional_flag(&mut flags, "untrusted-db").or_else(default_untrusted_db_path).ok_or_else(
+            || CliError::Usage("missing required flag --untrusted-db".to_string()),
+        )?;
+    let conversation = optional_flag(&mut flags, "conversation")
+        .or_else(default_global_conversation)
+        .unwrap_or_else(|| "global".to_string());
     let reference = required_flag(&mut flags, "ref")?;
 
     if !flags.is_empty() {
@@ -619,6 +602,37 @@ fn parse_role(raw: &str) -> Result<MessageRole, CliError> {
             "invalid --role `{other}` (expected user|assistant|system|tool)"
         ))),
     }
+}
+
+fn default_global_conversation() -> Option<String> {
+    std::env::var("SIEVE_LCM_GLOBAL_SESSION_ID")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn default_trusted_db_path() -> Option<String> {
+    std::env::var("SIEVE_LCM_TRUSTED_DB_PATH")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|home| format!("{home}/.sieve/lcm/trusted.db"))
+        })
+}
+
+fn default_untrusted_db_path() -> Option<String> {
+    std::env::var("SIEVE_LCM_UNTRUSTED_DB_PATH")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            std::env::var("HOME")
+                .ok()
+                .map(|home| format!("{home}/.sieve/lcm/untrusted.db"))
+        })
 }
 
 fn estimate_tokens(content: &str) -> i64 {
