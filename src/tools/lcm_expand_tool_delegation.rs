@@ -1,14 +1,17 @@
 use std::collections::HashSet;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::engine::LcmContextEngineApi;
-use crate::expansion_auth::{create_delegated_expansion_grant, revoke_delegated_expansion_grant_for_session, CreateDelegatedExpansionGrantInput};
+use crate::expansion_auth::{
+    CreateDelegatedExpansionGrantInput, create_delegated_expansion_grant,
+    revoke_delegated_expansion_grant_for_session,
+};
 use crate::tools::lcm_expansion_recursion_guard::{
-    clear_delegated_expansion_context, evaluate_expansion_recursion_guard,
+    TelemetryEvent, clear_delegated_expansion_context, evaluate_expansion_recursion_guard,
     record_expansion_delegation_telemetry, resolve_expansion_request_id,
-    stamp_delegated_expansion_context, TelemetryEvent,
+    stamp_delegated_expansion_context,
 };
 use crate::types::{GatewayCallRequest, LcmDependencies};
 
@@ -61,7 +64,9 @@ pub fn normalize_summary_ids(input: Option<&[String]>) -> Vec<String> {
     normalized
 }
 
-fn parse_delegated_expansion_reply(raw_reply: Option<&str>) -> (String, Vec<String>, Vec<String>, i64, bool) {
+fn parse_delegated_expansion_reply(
+    raw_reply: Option<&str>,
+) -> (String, Vec<String>, Vec<String>, i64, bool) {
     let fallback_summary = raw_reply.unwrap_or_default().trim().to_string();
     let reply = raw_reply.unwrap_or_default().trim();
     if reply.is_empty() {
@@ -119,7 +124,13 @@ fn parse_delegated_expansion_reply(raw_reply: Option<&str>) -> (String, Vec<Stri
             .map(|v| (v.floor() as i64).max(0))
             .unwrap_or(0);
         let truncated = parsed.get("truncated").and_then(Value::as_bool) == Some(true);
-        return (summary, cited_ids, follow_up_summary_ids, total_tokens, truncated);
+        return (
+            summary,
+            cited_ids,
+            follow_up_summary_ids,
+            total_tokens,
+            truncated,
+        );
     }
 
     (fallback_summary, vec![], vec![], 0, false)
@@ -176,9 +187,7 @@ fn build_delegated_expansion_task(
     if let Some(token_cap) = token_cap {
         payload["tokenCap"] = json!(token_cap);
     }
-    let mut lines = vec![
-        "Run LCM expansion and report distilled findings.".to_string(),
-    ];
+    let mut lines = vec!["Run LCM expansion and report distilled findings.".to_string()];
     if let Some(query) = query {
         lines.push(format!("Original query: {}", query));
     }

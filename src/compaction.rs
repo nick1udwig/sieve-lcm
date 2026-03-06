@@ -11,7 +11,8 @@ use crate::store::conversation_store::{
     ConversationStore, CreateMessageInput, CreateMessagePartInput, MessagePartType, MessageRole,
 };
 use crate::store::summary_store::{
-    ContextItemRecord, ContextItemType, CreateSummaryInput, SummaryKind, SummaryRecord, SummaryStore,
+    ContextItemRecord, ContextItemType, CreateSummaryInput, SummaryKind, SummaryRecord,
+    SummaryStore,
 };
 use crate::summarize::{LcmSummarizeFn, LcmSummarizeOptions};
 
@@ -273,7 +274,9 @@ impl CompactionEngine {
         token_budget: i64,
         observed_token_count: Option<i64>,
     ) -> anyhow::Result<CompactionDecision> {
-        let stored_tokens = self.summary_store.get_context_token_count(conversation_id)?;
+        let stored_tokens = self
+            .summary_store
+            .get_context_token_count(conversation_id)?;
         let live_tokens = observed_token_count.filter(|v| *v > 0).unwrap_or(0);
         let current_tokens = stored_tokens.max(live_tokens);
         let threshold = (self.config.context_threshold * token_budget as f64).floor() as i64;
@@ -295,8 +298,13 @@ impl CompactionEngine {
         })
     }
 
-    pub async fn evaluate_leaf_trigger(&self, conversation_id: i64) -> anyhow::Result<LeafTriggerDecision> {
-        let raw_tokens_outside_tail = self.count_raw_tokens_outside_fresh_tail(conversation_id).await?;
+    pub async fn evaluate_leaf_trigger(
+        &self,
+        conversation_id: i64,
+    ) -> anyhow::Result<LeafTriggerDecision> {
+        let raw_tokens_outside_tail = self
+            .count_raw_tokens_outside_fresh_tail(conversation_id)
+            .await?;
         let threshold = self.resolve_leaf_chunk_tokens();
         Ok(LeafTriggerDecision {
             should_compact: raw_tokens_outside_tail >= threshold,
@@ -311,7 +319,9 @@ impl CompactionEngine {
 
     pub async fn compact_leaf(&self, input: CompactLeafInput) -> anyhow::Result<CompactionResult> {
         let force = input.force.unwrap_or(false);
-        let tokens_before = self.summary_store.get_context_token_count(input.conversation_id)?;
+        let tokens_before = self
+            .summary_store
+            .get_context_token_count(input.conversation_id)?;
         let threshold = (self.config.context_threshold * input.token_budget as f64).floor() as i64;
         let leaf_trigger = self.evaluate_leaf_trigger(input.conversation_id).await?;
 
@@ -340,9 +350,10 @@ impl CompactionEngine {
 
         let previous_summary_content = match input.previous_summary_content {
             Some(value) => Some(value),
-            None => self
-                .resolve_prior_leaf_summary_context(input.conversation_id, &leaf_chunk.items)
-                .await?,
+            None => {
+                self.resolve_prior_leaf_summary_context(input.conversation_id, &leaf_chunk.items)
+                    .await?
+            }
         };
 
         let leaf_result = self
@@ -354,7 +365,9 @@ impl CompactionEngine {
             )
             .await?;
 
-        let tokens_after_leaf = self.summary_store.get_context_token_count(input.conversation_id)?;
+        let tokens_after_leaf = self
+            .summary_store
+            .get_context_token_count(input.conversation_id)?;
         self.persist_compaction_events(PersistEventsInput {
             conversation_id: input.conversation_id,
             tokens_before,
@@ -381,11 +394,15 @@ impl CompactionEngine {
                 let chunk = self
                     .select_oldest_chunk_at_depth(input.conversation_id, target_depth, None)
                     .await?;
-                if chunk.items.len() < fanout as usize || chunk.summary_tokens < condensed_min_chunk_tokens {
+                if chunk.items.len() < fanout as usize
+                    || chunk.summary_tokens < condensed_min_chunk_tokens
+                {
                     break;
                 }
 
-                let pass_tokens_before = self.summary_store.get_context_token_count(input.conversation_id)?;
+                let pass_tokens_before = self
+                    .summary_store
+                    .get_context_token_count(input.conversation_id)?;
                 let condense_result = self
                     .condensed_pass(
                         input.conversation_id,
@@ -394,7 +411,9 @@ impl CompactionEngine {
                         &input.summarize,
                     )
                     .await?;
-                let pass_tokens_after = self.summary_store.get_context_token_count(input.conversation_id)?;
+                let pass_tokens_after = self
+                    .summary_store
+                    .get_context_token_count(input.conversation_id)?;
                 self.persist_compaction_events(PersistEventsInput {
                     conversation_id: input.conversation_id,
                     tokens_before: pass_tokens_before,
@@ -429,11 +448,16 @@ impl CompactionEngine {
         })
     }
 
-    pub async fn compact_full_sweep(&self, input: CompactInput) -> anyhow::Result<CompactionResult> {
+    pub async fn compact_full_sweep(
+        &self,
+        input: CompactInput,
+    ) -> anyhow::Result<CompactionResult> {
         let force = input.force.unwrap_or(false);
         let hard_trigger = input.hard_trigger.unwrap_or(false);
 
-        let tokens_before = self.summary_store.get_context_token_count(input.conversation_id)?;
+        let tokens_before = self
+            .summary_store
+            .get_context_token_count(input.conversation_id)?;
         let threshold = (self.config.context_threshold * input.token_budget as f64).floor() as i64;
         let leaf_trigger = self.evaluate_leaf_trigger(input.conversation_id).await?;
 
@@ -448,7 +472,9 @@ impl CompactionEngine {
             });
         }
 
-        let context_items = self.summary_store.get_context_items(input.conversation_id)?;
+        let context_items = self
+            .summary_store
+            .get_context_items(input.conversation_id)?;
         if context_items.is_empty() {
             return Ok(CompactionResult {
                 action_taken: false,
@@ -473,7 +499,9 @@ impl CompactionEngine {
                 break;
             }
 
-            let pass_tokens_before = self.summary_store.get_context_token_count(input.conversation_id)?;
+            let pass_tokens_before = self
+                .summary_store
+                .get_context_token_count(input.conversation_id)?;
             let leaf_result = self
                 .leaf_pass(
                     input.conversation_id,
@@ -482,7 +510,9 @@ impl CompactionEngine {
                     previous_summary_content.clone(),
                 )
                 .await?;
-            let pass_tokens_after = self.summary_store.get_context_token_count(input.conversation_id)?;
+            let pass_tokens_after = self
+                .summary_store
+                .get_context_token_count(input.conversation_id)?;
             self.persist_compaction_events(PersistEventsInput {
                 conversation_id: input.conversation_id,
                 tokens_before: pass_tokens_before,
@@ -515,7 +545,9 @@ impl CompactionEngine {
                 break;
             };
 
-            let pass_tokens_before = self.summary_store.get_context_token_count(input.conversation_id)?;
+            let pass_tokens_before = self
+                .summary_store
+                .get_context_token_count(input.conversation_id)?;
             let condense_result = self
                 .condensed_pass(
                     input.conversation_id,
@@ -524,7 +556,9 @@ impl CompactionEngine {
                     &input.summarize,
                 )
                 .await?;
-            let pass_tokens_after = self.summary_store.get_context_token_count(input.conversation_id)?;
+            let pass_tokens_after = self
+                .summary_store
+                .get_context_token_count(input.conversation_id)?;
             self.persist_compaction_events(PersistEventsInput {
                 conversation_id: input.conversation_id,
                 tokens_before: pass_tokens_before,
@@ -549,7 +583,9 @@ impl CompactionEngine {
             previous_tokens = pass_tokens_after;
         }
 
-        let tokens_after = self.summary_store.get_context_token_count(input.conversation_id)?;
+        let tokens_after = self
+            .summary_store
+            .get_context_token_count(input.conversation_id)?;
         Ok(CompactionResult {
             action_taken,
             tokens_before,
@@ -569,7 +605,9 @@ impl CompactionEngine {
             .filter(|value| *value > 0)
             .unwrap_or(input.token_budget);
 
-        let stored_tokens = self.summary_store.get_context_token_count(input.conversation_id)?;
+        let stored_tokens = self
+            .summary_store
+            .get_context_token_count(input.conversation_id)?;
         let live_tokens = input.current_tokens.filter(|v| *v > 0).unwrap_or(0);
         let mut last_tokens = stored_tokens.max(live_tokens);
 
@@ -612,7 +650,9 @@ impl CompactionEngine {
             last_tokens = result.tokens_after;
         }
 
-        let final_tokens = self.summary_store.get_context_token_count(input.conversation_id)?;
+        let final_tokens = self
+            .summary_store
+            .get_context_token_count(input.conversation_id)?;
         Ok(CompactUntilUnderResult {
             success: final_tokens <= target_tokens,
             rounds: max_rounds,
@@ -692,7 +732,9 @@ impl CompactionEngine {
 
         let raw_message_items: Vec<&ContextItemRecord> = context_items
             .iter()
-            .filter(|item| matches!(item.item_type, ContextItemType::Message) && item.message_id.is_some())
+            .filter(|item| {
+                matches!(item.item_type, ContextItemType::Message) && item.message_id.is_some()
+            })
             .collect();
         if raw_message_items.is_empty() {
             return i64::MAX;
@@ -730,7 +772,10 @@ impl CompactionEngine {
         Ok(self.resolve_message_token_count(&message.content, message.token_count))
     }
 
-    async fn count_raw_tokens_outside_fresh_tail(&self, conversation_id: i64) -> anyhow::Result<i64> {
+    async fn count_raw_tokens_outside_fresh_tail(
+        &self,
+        conversation_id: i64,
+    ) -> anyhow::Result<i64> {
         let context_items = self.summary_store.get_context_items(conversation_id)?;
         let fresh_tail_ordinal = self.resolve_fresh_tail_ordinal(&context_items);
         let mut raw_tokens = 0_i64;
@@ -751,7 +796,10 @@ impl CompactionEngine {
         Ok(raw_tokens)
     }
 
-    async fn select_oldest_leaf_chunk(&self, conversation_id: i64) -> anyhow::Result<LeafChunkSelection> {
+    async fn select_oldest_leaf_chunk(
+        &self,
+        conversation_id: i64,
+    ) -> anyhow::Result<LeafChunkSelection> {
         let context_items = self.summary_store.get_context_items(conversation_id)?;
         let fresh_tail_ordinal = self.resolve_fresh_tail_ordinal(&context_items);
         let threshold = self.resolve_leaf_chunk_tokens();
@@ -865,7 +913,11 @@ impl CompactionEngine {
         for target_depth in depth_levels {
             let fanout = self.resolve_fanout_for_depth(target_depth, hard_trigger);
             let chunk = self
-                .select_oldest_chunk_at_depth(conversation_id, target_depth, Some(fresh_tail_ordinal))
+                .select_oldest_chunk_at_depth(
+                    conversation_id,
+                    target_depth,
+                    Some(fresh_tail_ordinal),
+                )
                 .await?;
             if chunk.items.len() < fanout as usize {
                 continue;
@@ -1014,7 +1066,10 @@ impl CompactionEngine {
     ) -> (String, CompactionLevel) {
         let source_text = source_text.trim();
         if source_text.is_empty() {
-            return ("[Truncated from 0 tokens]".to_string(), CompactionLevel::Fallback);
+            return (
+                "[Truncated from 0 tokens]".to_string(),
+                CompactionLevel::Fallback,
+            );
         }
 
         let input_tokens = estimate_tokens(source_text).max(1);
@@ -1058,7 +1113,8 @@ impl CompactionEngine {
                 message_id: message.message_id,
                 content: message.content.clone(),
                 created_at: message.created_at,
-                token_count: self.resolve_message_token_count(&message.content, message.token_count),
+                token_count: self
+                    .resolve_message_token_count(&message.content, message.token_count),
             });
         }
 
@@ -1105,8 +1161,10 @@ impl CompactionEngine {
             .map(|message| &message.created_at)
             .max()
             .cloned();
-        let source_message_token_count: i64 =
-            message_contents.iter().map(|message| message.token_count.max(0)).sum();
+        let source_message_token_count: i64 = message_contents
+            .iter()
+            .map(|message| message.token_count.max(0))
+            .sum();
 
         self.summary_store.insert_summary(CreateSummaryInput {
             summary_id: summary_id.clone(),
@@ -1123,7 +1181,10 @@ impl CompactionEngine {
             source_message_token_count: Some(source_message_token_count),
         })?;
 
-        let message_ids: Vec<i64> = message_contents.iter().map(|message| message.message_id).collect();
+        let message_ids: Vec<i64> = message_contents
+            .iter()
+            .map(|message| message.message_id)
+            .collect();
         self.summary_store
             .link_summary_to_messages(&summary_id, &message_ids)?;
 
@@ -1193,8 +1254,12 @@ impl CompactionEngine {
         let file_ids = dedupe_ordered_ids(file_id_candidates);
 
         let previous_summary_content = if target_depth == 0 {
-            self.resolve_prior_summary_context_at_depth(conversation_id, &summary_items, target_depth)
-                .await?
+            self.resolve_prior_summary_context_at_depth(
+                conversation_id,
+                &summary_items,
+                target_depth,
+            )
+            .await?
         } else {
             None
         };
@@ -1281,7 +1346,10 @@ impl CompactionEngine {
             return;
         }
 
-        let Ok(conversation) = self.conversation_store.get_conversation(input.conversation_id) else {
+        let Ok(conversation) = self
+            .conversation_store
+            .get_conversation(input.conversation_id)
+        else {
             return;
         };
         let Some(conversation) = conversation else {

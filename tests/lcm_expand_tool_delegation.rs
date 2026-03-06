@@ -3,14 +3,16 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sieve_lcm::db::config::LcmConfig;
-use sieve_lcm::tools::lcm_expand_tool_delegation::{run_delegated_expansion_loop, DelegatedPassStatus};
-use sieve_lcm::tools::lcm_expansion_recursion_guard::{
-    get_expansion_delegation_telemetry_snapshot_for_tests, reset_expansion_delegation_guard_for_tests,
-    stamp_delegated_expansion_context,
-};
 use sieve_lcm::expansion_auth::reset_delegated_expansion_grants_for_tests;
+use sieve_lcm::tools::lcm_expand_tool_delegation::{
+    DelegatedPassStatus, run_delegated_expansion_loop,
+};
+use sieve_lcm::tools::lcm_expansion_recursion_guard::{
+    get_expansion_delegation_telemetry_snapshot_for_tests,
+    reset_expansion_delegation_guard_for_tests, stamp_delegated_expansion_context,
+};
 use sieve_lcm::types::{
     CompletionRequest, CompletionResult, GatewayCallRequest, LcmDependencies, LcmLogger, ModelRef,
 };
@@ -302,7 +304,9 @@ async fn blocks_delegated_expansion_helper_reentry_at_depth_cap() {
     assert_eq!(result.status, DelegatedPassStatus::Error);
     let error = result.error.unwrap_or_default();
     assert!(error.contains("EXPANSION_RECURSION_BLOCKED"));
-    assert!(error.contains("Recovery: In delegated sub-agent sessions, call `lcm_expand` directly"));
+    assert!(
+        error.contains("Recovery: In delegated sub-agent sessions, call `lcm_expand` directly")
+    );
     assert!(error.contains("Do NOT call `lcm_expand_query` from delegated context."));
     assert!(calls.lock().is_empty());
     let snapshot = get_expansion_delegation_telemetry_snapshot_for_tests();

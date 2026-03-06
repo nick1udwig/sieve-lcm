@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
+use chrono::Utc;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use serde_json::json;
 use uuid::Uuid;
-use chrono::Utc;
 
 use crate::expansion_auth::resolve_delegated_expansion_grant_id;
 use crate::types::LcmDependencies;
@@ -290,7 +290,9 @@ pub fn record_expansion_delegation_telemetry(
     }
 }
 
-pub fn get_delegated_expansion_context_for_tests(session_key: &str) -> Option<DelegatedExpansionContext> {
+pub fn get_delegated_expansion_context_for_tests(
+    session_key: &str,
+) -> Option<DelegatedExpansionContext> {
     DELEGATED_CONTEXT_BY_SESSION_KEY
         .lock()
         .get(&normalize_session_key(Some(session_key)))

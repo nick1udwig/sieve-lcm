@@ -1,7 +1,9 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::retrieval::{ExpandInput, ExpandResult as RetrievalExpandResult, GrepInput, RetrievalApi};
+use crate::retrieval::{
+    ExpandInput, ExpandResult as RetrievalExpandResult, GrepInput, RetrievalApi,
+};
 
 const SNIPPET_MAX_CHARS: usize = 200;
 
@@ -53,7 +55,10 @@ fn truncate_snippet(content: &str, max_chars: usize) -> String {
     }
 }
 
-pub fn resolve_expansion_token_cap(requested_token_cap: Option<i64>, max_expand_tokens: i64) -> i64 {
+pub fn resolve_expansion_token_cap(
+    requested_token_cap: Option<i64>,
+    max_expand_tokens: i64,
+) -> i64 {
     let max_expand_tokens = max_expand_tokens.max(1);
     match requested_token_cap {
         Some(value) => value.max(1).min(max_expand_tokens),
@@ -214,10 +219,17 @@ pub fn distill_for_subagent(result: &ExpansionResult) -> String {
     lines.push(String::new());
 
     for entry in &result.expansions {
-        let kind = if !entry.children.is_empty() { "condensed" } else { "leaf" };
+        let kind = if !entry.children.is_empty() {
+            "condensed"
+        } else {
+            "leaf"
+        };
         let token_sum: i64 = entry.children.iter().map(|c| c.token_count).sum::<i64>()
             + entry.messages.iter().map(|m| m.token_count).sum::<i64>();
-        lines.push(format!("### {} ({}, {} tokens)", entry.summary_id, kind, token_sum));
+        lines.push(format!(
+            "### {} ({}, {} tokens)",
+            entry.summary_id, kind, token_sum
+        ));
         if !entry.children.is_empty() {
             lines.push(format!(
                 "Children: {}",
@@ -235,13 +247,19 @@ pub fn distill_for_subagent(result: &ExpansionResult) -> String {
                 entry
                     .messages
                     .iter()
-                    .map(|m| format!("msg#{} ({}, {} tokens)", m.message_id, m.role, m.token_count))
+                    .map(|m| format!(
+                        "msg#{} ({}, {} tokens)",
+                        m.message_id, m.role, m.token_count
+                    ))
                     .collect::<Vec<String>>()
                     .join(", ")
             ));
         }
         if let Some(first) = entry.children.iter().find(|c| !c.snippet.is_empty()) {
-            lines.push(format!("[Snippet: {}]", truncate_snippet(&first.snippet, SNIPPET_MAX_CHARS)));
+            lines.push(format!(
+                "[Snippet: {}]",
+                truncate_snippet(&first.snippet, SNIPPET_MAX_CHARS)
+            ));
         }
         lines.push(String::new());
     }
@@ -295,8 +313,10 @@ impl ExpansionToolDefinition {
             });
         let query = params.get("query").and_then(|v| v.as_str()).map(str::trim);
         let max_depth = params.get("maxDepth").and_then(|v| v.as_i64());
-        let token_cap =
-            resolve_expansion_token_cap(params.get("tokenCap").and_then(|v| v.as_i64()), self.max_expand_tokens);
+        let token_cap = resolve_expansion_token_cap(
+            params.get("tokenCap").and_then(|v| v.as_i64()),
+            self.max_expand_tokens,
+        );
         let include_messages = params
             .get("includeMessages")
             .and_then(|v| v.as_bool())

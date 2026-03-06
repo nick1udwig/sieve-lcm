@@ -1,17 +1,23 @@
 use std::sync::Arc;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::engine::LcmContextEngineApi;
-use crate::expansion::{distill_for_subagent, ExpansionOrchestrator, ExpansionRequest, ExpansionResult};
-use crate::expansion_auth::{get_runtime_expansion_auth_manager, resolve_delegated_expansion_grant_id, wrap_with_auth};
+use crate::expansion::{
+    ExpansionOrchestrator, ExpansionRequest, ExpansionResult, distill_for_subagent,
+};
+use crate::expansion_auth::{
+    get_runtime_expansion_auth_manager, resolve_delegated_expansion_grant_id, wrap_with_auth,
+};
 use crate::expansion_policy::{
-    decide_lcm_expansion_routing, LcmExpansionRoutingAction, LcmExpansionRoutingDecision,
-    LcmExpansionRoutingInput, LcmExpansionRoutingIntent, LcmExpansionTokenRiskLevel,
+    LcmExpansionRoutingAction, LcmExpansionRoutingDecision, LcmExpansionRoutingInput,
+    LcmExpansionRoutingIntent, LcmExpansionTokenRiskLevel, decide_lcm_expansion_routing,
 };
 use crate::tools::common::{ToolContentBlock, ToolResult, json_result};
 use crate::tools::lcm_conversation_scope::resolve_lcm_conversation_scope;
-use crate::tools::lcm_expand_tool_delegation::{normalize_summary_ids, run_delegated_expansion_loop, DelegatedPassStatus};
+use crate::tools::lcm_expand_tool_delegation::{
+    DelegatedPassStatus, normalize_summary_ids, run_delegated_expansion_loop,
+};
 use crate::types::LcmDependencies;
 
 fn make_empty_expansion_result() -> ExpansionResult {
@@ -125,16 +131,17 @@ impl LcmExpandTool {
         let orchestrator = ExpansionOrchestrator::new(retrieval.clone());
         let runtime_auth_manager = get_runtime_expansion_auth_manager();
         let p = params.as_object().cloned().unwrap_or_default();
-        let summary_ids = p
-            .get("summaryIds")
-            .and_then(Value::as_array)
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(Value::as_str)
-                    .map(ToString::to_string)
-                    .collect::<Vec<String>>()
-            });
-        let query = p.get("query").and_then(Value::as_str).map(str::trim).filter(|q| !q.is_empty());
+        let summary_ids = p.get("summaryIds").and_then(Value::as_array).map(|arr| {
+            arr.iter()
+                .filter_map(Value::as_str)
+                .map(ToString::to_string)
+                .collect::<Vec<String>>()
+        });
+        let query = p
+            .get("query")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|q| !q.is_empty());
         let max_depth = p
             .get("maxDepth")
             .and_then(Value::as_f64)
@@ -195,7 +202,9 @@ impl LcmExpandTool {
                           token_cap: Option<i64>,
                           include_messages: bool,
                           delegated_grant_id: Option<String>,
-                          authorized_orchestrator: Option<crate::expansion_auth::AuthorizedExpansionOrchestrator>,
+                          authorized_orchestrator: Option<
+            crate::expansion_auth::AuthorizedExpansionOrchestrator,
+        >,
                           orchestrator: ExpansionOrchestrator| async move {
             let request = ExpansionRequest {
                 summary_ids,
@@ -204,7 +213,9 @@ impl LcmExpandTool {
                 include_messages: Some(include_messages),
                 conversation_id,
             };
-            if let (Some(authorized), Some(grant_id)) = (authorized_orchestrator, delegated_grant_id) {
+            if let (Some(authorized), Some(grant_id)) =
+                (authorized_orchestrator, delegated_grant_id)
+            {
                 authorized.expand(&grant_id, request).await
             } else {
                 orchestrator.expand(request).await
@@ -235,13 +246,7 @@ impl LcmExpandTool {
 
             if resolved_conversation_id.is_none() {
                 let result = match orchestrator
-                    .describe_and_expand(
-                        query,
-                        "full_text",
-                        None,
-                        max_depth,
-                        token_cap,
-                    )
+                    .describe_and_expand(query, "full_text", None, max_depth, token_cap)
                     .await
                 {
                     Ok(result) => result,
@@ -390,7 +395,9 @@ impl LcmExpandTool {
                 for summary_id in &summary_ids {
                     let described = retrieval.describe(summary_id).await?;
                     if let Some(described) = described {
-                        if let crate::retrieval::DescribeResultType::Summary(summary) = described.result {
+                        if let crate::retrieval::DescribeResultType::Summary(summary) =
+                            described.result
+                        {
                             if summary.conversation_id != conversation_id {
                                 out_of_scope.push(summary_id.clone());
                             }
@@ -519,7 +526,9 @@ fn delegated_status_label(status: &DelegatedPassStatus) -> &'static str {
     }
 }
 
-fn delegated_pass_to_json(pass: &crate::tools::lcm_expand_tool_delegation::DelegatedExpansionPassResult) -> Value {
+fn delegated_pass_to_json(
+    pass: &crate::tools::lcm_expand_tool_delegation::DelegatedExpansionPassResult,
+) -> Value {
     json!({
         "pass": pass.pass,
         "status": delegated_status_label(&pass.status),
@@ -535,7 +544,9 @@ fn delegated_pass_to_json(pass: &crate::tools::lcm_expand_tool_delegation::Deleg
     })
 }
 
-fn delegated_to_json(delegated: &crate::tools::lcm_expand_tool_delegation::DelegatedExpansionLoopResult) -> Value {
+fn delegated_to_json(
+    delegated: &crate::tools::lcm_expand_tool_delegation::DelegatedExpansionLoopResult,
+) -> Value {
     json!({
         "status": delegated_status_label(&delegated.status),
         "passes": delegated.passes.iter().map(delegated_pass_to_json).collect::<Vec<Value>>(),

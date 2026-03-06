@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
-use sieve_lcm::cli::{execute_command, parse_command, serialize_error_json, serialize_success_json};
+use sieve_lcm::cli::{
+    execute_command, parse_command, serialize_error_json, serialize_success_json,
+};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();

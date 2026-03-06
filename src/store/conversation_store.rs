@@ -4,7 +4,7 @@ use anyhow::Context;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use parking_lot::Mutex;
 use regex::Regex;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -368,7 +368,10 @@ impl ConversationStore {
         })
     }
 
-    pub fn mark_conversation_bootstrapped(&self, conversation_id: ConversationId) -> anyhow::Result<()> {
+    pub fn mark_conversation_bootstrapped(
+        &self,
+        conversation_id: ConversationId,
+    ) -> anyhow::Result<()> {
         self.with_conn(|conn| {
             conn.execute(
                 "UPDATE conversations
@@ -525,7 +528,10 @@ impl ConversationStore {
         })
     }
 
-    pub fn get_last_message(&self, conversation_id: ConversationId) -> anyhow::Result<Option<MessageRecord>> {
+    pub fn get_last_message(
+        &self,
+        conversation_id: ConversationId,
+    ) -> anyhow::Result<Option<MessageRecord>> {
         self.with_conn(|conn| {
             conn.query_row(
                 "SELECT message_id, conversation_id, seq, role, content, token_count, created_at
@@ -586,7 +592,10 @@ impl ConversationStore {
         })
     }
 
-    pub fn get_message_by_id(&self, message_id: MessageId) -> anyhow::Result<Option<MessageRecord>> {
+    pub fn get_message_by_id(
+        &self,
+        message_id: MessageId,
+    ) -> anyhow::Result<Option<MessageRecord>> {
         self.with_conn(|conn| {
             conn.query_row(
                 "SELECT message_id, conversation_id, seq, role, content, token_count, created_at
@@ -643,7 +652,10 @@ impl ConversationStore {
         })
     }
 
-    pub fn get_message_parts(&self, message_id: MessageId) -> anyhow::Result<Vec<MessagePartRecord>> {
+    pub fn get_message_parts(
+        &self,
+        message_id: MessageId,
+    ) -> anyhow::Result<Vec<MessagePartRecord>> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT part_id, message_id, session_id, part_type, ordinal, text_content,
@@ -717,15 +729,24 @@ impl ConversationStore {
                     "DELETE FROM context_items WHERE item_type = 'message' AND message_id = ?",
                     params![message_id],
                 )?;
-                let _ = conn.execute("DELETE FROM messages_fts WHERE rowid = ?", params![message_id]);
-                conn.execute("DELETE FROM messages WHERE message_id = ?", params![message_id])?;
+                let _ = conn.execute(
+                    "DELETE FROM messages_fts WHERE rowid = ?",
+                    params![message_id],
+                );
+                conn.execute(
+                    "DELETE FROM messages WHERE message_id = ?",
+                    params![message_id],
+                )?;
                 deleted += 1;
             }
             Ok(deleted)
         })
     }
 
-    pub fn search_messages(&self, input: MessageSearchInput) -> anyhow::Result<Vec<MessageSearchResult>> {
+    pub fn search_messages(
+        &self,
+        input: MessageSearchInput,
+    ) -> anyhow::Result<Vec<MessageSearchResult>> {
         let limit = input.limit.unwrap_or(50).clamp(1, 200);
         if input.mode == "full_text" {
             return self.search_full_text(

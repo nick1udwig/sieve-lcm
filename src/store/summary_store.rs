@@ -4,7 +4,7 @@ use anyhow::Context;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use parking_lot::Mutex;
 use regex::Regex;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 use crate::db::connection::SharedConnection;
@@ -302,7 +302,10 @@ impl SummaryStore {
         })
     }
 
-    pub fn get_summaries_by_conversation(&self, conversation_id: i64) -> anyhow::Result<Vec<SummaryRecord>> {
+    pub fn get_summaries_by_conversation(
+        &self,
+        conversation_id: i64,
+    ) -> anyhow::Result<Vec<SummaryRecord>> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT summary_id, conversation_id, kind, depth, content, token_count, file_ids,
@@ -340,7 +343,11 @@ impl SummaryStore {
         })
     }
 
-    pub fn link_summary_to_messages(&self, summary_id: &str, message_ids: &[i64]) -> anyhow::Result<()> {
+    pub fn link_summary_to_messages(
+        &self,
+        summary_id: &str,
+        message_ids: &[i64],
+    ) -> anyhow::Result<()> {
         if message_ids.is_empty() {
             return Ok(());
         }
@@ -357,7 +364,11 @@ impl SummaryStore {
         })
     }
 
-    pub fn link_summary_to_parents(&self, summary_id: &str, parent_summary_ids: &[String]) -> anyhow::Result<()> {
+    pub fn link_summary_to_parents(
+        &self,
+        summary_id: &str,
+        parent_summary_ids: &[String],
+    ) -> anyhow::Result<()> {
         if parent_summary_ids.is_empty() {
             return Ok(());
         }
@@ -388,7 +399,10 @@ impl SummaryStore {
         })
     }
 
-    pub fn get_summary_children(&self, parent_summary_id: &str) -> anyhow::Result<Vec<SummaryRecord>> {
+    pub fn get_summary_children(
+        &self,
+        parent_summary_id: &str,
+    ) -> anyhow::Result<Vec<SummaryRecord>> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT s.summary_id, s.conversation_id, s.kind, s.depth, s.content, s.token_count,
@@ -456,7 +470,10 @@ impl SummaryStore {
         })
     }
 
-    pub fn get_summary_subtree(&self, summary_id: &str) -> anyhow::Result<Vec<SummarySubtreeNodeRecord>> {
+    pub fn get_summary_subtree(
+        &self,
+        summary_id: &str,
+    ) -> anyhow::Result<Vec<SummarySubtreeNodeRecord>> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "WITH RECURSIVE subtree(summary_id, parent_summary_id, depth_from_root, path) AS (
@@ -515,8 +532,14 @@ impl SummaryStore {
                     content: row.get(4)?,
                     token_count: row.get(5)?,
                     file_ids: decode_file_ids(&row.get::<_, String>(6)?),
-                    earliest_at: row.get::<_, Option<String>>(7)?.as_deref().map(parse_datetime),
-                    latest_at: row.get::<_, Option<String>>(8)?.as_deref().map(parse_datetime),
+                    earliest_at: row
+                        .get::<_, Option<String>>(7)?
+                        .as_deref()
+                        .map(parse_datetime),
+                    latest_at: row
+                        .get::<_, Option<String>>(8)?
+                        .as_deref()
+                        .map(parse_datetime),
                     descendant_count: row.get::<_, Option<i64>>(9)?.unwrap_or(0).max(0),
                     descendant_token_count: row.get::<_, Option<i64>>(10)?.unwrap_or(0).max(0),
                     source_message_token_count: row.get::<_, Option<i64>>(11)?.unwrap_or(0).max(0),
@@ -534,7 +557,10 @@ impl SummaryStore {
         })
     }
 
-    pub fn get_context_items(&self, conversation_id: i64) -> anyhow::Result<Vec<ContextItemRecord>> {
+    pub fn get_context_items(
+        &self,
+        conversation_id: i64,
+    ) -> anyhow::Result<Vec<ContextItemRecord>> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT conversation_id, ordinal, item_type, message_id, summary_id, created_at
@@ -597,7 +623,11 @@ impl SummaryStore {
         })
     }
 
-    pub fn append_context_message(&self, conversation_id: i64, message_id: i64) -> anyhow::Result<()> {
+    pub fn append_context_message(
+        &self,
+        conversation_id: i64,
+        message_id: i64,
+    ) -> anyhow::Result<()> {
         self.with_conn(|conn| {
             let max_ordinal: i64 = conn.query_row(
                 "SELECT COALESCE(MAX(ordinal), -1) FROM context_items WHERE conversation_id = ?",
@@ -613,7 +643,11 @@ impl SummaryStore {
         })
     }
 
-    pub fn append_context_messages(&self, conversation_id: i64, message_ids: &[i64]) -> anyhow::Result<()> {
+    pub fn append_context_messages(
+        &self,
+        conversation_id: i64,
+        message_ids: &[i64],
+    ) -> anyhow::Result<()> {
         if message_ids.is_empty() {
             return Ok(());
         }
@@ -628,13 +662,21 @@ impl SummaryStore {
                  VALUES (?, ?, 'message', ?)",
             )?;
             for (idx, message_id) in message_ids.iter().enumerate() {
-                stmt.execute(params![conversation_id, max_ordinal + 1 + idx as i64, message_id])?;
+                stmt.execute(params![
+                    conversation_id,
+                    max_ordinal + 1 + idx as i64,
+                    message_id
+                ])?;
             }
             Ok(())
         })
     }
 
-    pub fn append_context_summary(&self, conversation_id: i64, summary_id: &str) -> anyhow::Result<()> {
+    pub fn append_context_summary(
+        &self,
+        conversation_id: i64,
+        summary_id: &str,
+    ) -> anyhow::Result<()> {
         self.with_conn(|conn| {
             let max_ordinal: i64 = conn.query_row(
                 "SELECT COALESCE(MAX(ordinal), -1) FROM context_items WHERE conversation_id = ?",
@@ -736,7 +778,10 @@ impl SummaryStore {
         })
     }
 
-    pub fn search_summaries(&self, input: SummarySearchInput) -> anyhow::Result<Vec<SummarySearchResult>> {
+    pub fn search_summaries(
+        &self,
+        input: SummarySearchInput,
+    ) -> anyhow::Result<Vec<SummarySearchResult>> {
         let limit = input.limit.unwrap_or(50).clamp(1, 200);
         if input.mode == "full_text" {
             return self.search_full_text(
@@ -871,7 +916,10 @@ impl SummaryStore {
         })
     }
 
-    pub fn insert_large_file(&self, input: CreateLargeFileInput) -> anyhow::Result<LargeFileRecord> {
+    pub fn insert_large_file(
+        &self,
+        input: CreateLargeFileInput,
+    ) -> anyhow::Result<LargeFileRecord> {
         self.with_conn(|conn| {
             conn.execute(
                 "INSERT INTO large_files (file_id, conversation_id, file_name, mime_type, byte_size, storage_uri, exploration_summary)
@@ -932,7 +980,10 @@ impl SummaryStore {
         })
     }
 
-    pub fn get_large_files_by_conversation(&self, conversation_id: i64) -> anyhow::Result<Vec<LargeFileRecord>> {
+    pub fn get_large_files_by_conversation(
+        &self,
+        conversation_id: i64,
+    ) -> anyhow::Result<Vec<LargeFileRecord>> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT file_id, conversation_id, file_name, mime_type, byte_size, storage_uri, exploration_summary, created_at

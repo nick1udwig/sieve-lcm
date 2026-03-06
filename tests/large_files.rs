@@ -1,9 +1,9 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use sieve_lcm::large_files::{
-    extension_from_name_or_mime, extract_file_ids_from_content, format_file_reference,
-    generate_exploration_summary, parse_file_blocks, ExplorationSummaryInput,
+    ExplorationSummaryInput, extension_from_name_or_mime, extract_file_ids_from_content,
+    format_file_reference, generate_exploration_summary, parse_file_blocks,
 };
 
 #[test]

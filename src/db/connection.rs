@@ -21,7 +21,9 @@ struct Entry {
 static CONNECTIONS: Lazy<Mutex<HashMap<String, Entry>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 fn is_connection_healthy(conn: &Arc<Mutex<Connection>>) -> bool {
-    conn.lock().query_row("SELECT 1", [], |_row| Ok::<i32, rusqlite::Error>(1)).is_ok()
+    conn.lock()
+        .query_row("SELECT 1", [], |_row| Ok::<i32, rusqlite::Error>(1))
+        .is_ok()
 }
 
 fn open_connection(path: &str) -> anyhow::Result<Arc<Mutex<Connection>>> {

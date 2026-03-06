@@ -3,13 +3,16 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use parking_lot::Mutex;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sieve_lcm::db::config::LcmConfig;
 use sieve_lcm::engine::{ContextEngineInfo, ConversationLookupApi, LcmContextEngineApi};
-use sieve_lcm::expansion_auth::{create_delegated_expansion_grant, reset_delegated_expansion_grants_for_tests, CreateDelegatedExpansionGrantInput};
+use sieve_lcm::expansion_auth::{
+    CreateDelegatedExpansionGrantInput, create_delegated_expansion_grant,
+    reset_delegated_expansion_grants_for_tests,
+};
 use sieve_lcm::retrieval::{
-    DescribeResult, DescribeResultType, DescribeSubtreeNode, DescribeSummary, ExpandInput, ExpandResult,
-    GrepInput, GrepResult, RetrievalApi,
+    DescribeResult, DescribeResultType, DescribeSubtreeNode, DescribeSummary, ExpandInput,
+    ExpandResult, GrepInput, GrepResult, RetrievalApi,
 };
 use sieve_lcm::store::conversation_store::{ConversationRecord, MessageRole, MessageSearchResult};
 use sieve_lcm::store::summary_store::{SummaryKind, SummarySearchResult};
@@ -351,7 +354,8 @@ async fn lcm_grep_forwards_since_before_and_includes_iso_timestamp_in_output() {
     };
 
     let deps = make_deps();
-    let engine: Arc<dyn LcmContextEngineApi> = Arc::new(MockEngine::new(retrieval.clone(), Some(42)));
+    let engine: Arc<dyn LcmContextEngineApi> =
+        Arc::new(MockEngine::new(retrieval.clone(), Some(42)));
     let tool = create_lcm_grep_tool(deps, engine, Some("session-1".to_string()), None);
     let result = tool
         .execute(
@@ -439,12 +443,14 @@ async fn lcm_describe_blocks_cross_conversation_unless_all_conversations_true() 
         .execute("call-3", json!({ "id": "sum_foreign" }))
         .await
         .expect("scoped");
-    assert!(scoped
-        .details
-        .get("error")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .contains("Not found in conversation 42"));
+    assert!(
+        scoped
+            .details
+            .get("error")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .contains("Not found in conversation 42")
+    );
 
     let cross = tool
         .execute(

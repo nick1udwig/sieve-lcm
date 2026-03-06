@@ -37,7 +37,13 @@ pub async fn resolve_lcm_conversation_scope(
     let explicit_conversation_id = params
         .get("conversationId")
         .and_then(|v| v.as_f64())
-        .and_then(|v| if v.is_finite() { Some(v.trunc() as i64) } else { None });
+        .and_then(|v| {
+            if v.is_finite() {
+                Some(v.trunc() as i64)
+            } else {
+                None
+            }
+        });
     if let Some(conversation_id) = explicit_conversation_id {
         return Ok(LcmConversationScope {
             conversation_id: Some(conversation_id),
@@ -57,7 +63,9 @@ pub async fn resolve_lcm_conversation_scope(
         .filter(|v| !v.is_empty())
         .map(ToString::to_string);
     if normalized_session_id.is_none() {
-        if let (Some(key), Some(deps)) = (session_key.map(str::trim).filter(|k| !k.is_empty()), deps) {
+        if let (Some(key), Some(deps)) =
+            (session_key.map(str::trim).filter(|k| !k.is_empty()), deps)
+        {
             normalized_session_id = deps.resolve_session_id_from_session_key(key).await?;
         }
     }

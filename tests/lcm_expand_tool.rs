@@ -4,12 +4,12 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sieve_lcm::db::config::LcmConfig;
 use sieve_lcm::engine::{ContextEngineInfo, ConversationLookupApi, LcmContextEngineApi};
 use sieve_lcm::expansion_auth::{
-    create_delegated_expansion_grant, reset_delegated_expansion_grants_for_tests,
-    revoke_delegated_expansion_grant_for_session, CreateDelegatedExpansionGrantInput,
+    CreateDelegatedExpansionGrantInput, create_delegated_expansion_grant,
+    reset_delegated_expansion_grants_for_tests, revoke_delegated_expansion_grant_for_session,
 };
 use sieve_lcm::retrieval::{
     DescribeResult, DescribeResultType, DescribeSummary, ExpandInput, ExpandResult, GrepInput,
@@ -330,12 +330,7 @@ async fn rejects_lcm_expand_from_main_sessions() {
         Ok(json!({}))
     }));
     let engine: Arc<dyn LcmContextEngineApi> = Arc::new(MockEngine::new(retrieval.clone(), None));
-    let tool = create_lcm_expand_tool(
-        deps,
-        engine,
-        Some("agent:main:main".to_string()),
-        None,
-    );
+    let tool = create_lcm_expand_tool(deps, engine, Some("agent:main:main".to_string()), None);
     let result = tool
         .execute("call-main-rejected", json!({ "summaryIds": ["sum_a"] }))
         .await
@@ -353,7 +348,10 @@ async fn uses_remaining_grant_tokencap_when_omitted_for_summary_expansion() {
     let _guard = TEST_LOCK.lock();
     reset_delegated_expansion_grants_for_tests();
     let retrieval = Arc::new(MockRetrieval::default());
-    retrieval.expand_results.lock().push(single_expand_result(40));
+    retrieval
+        .expand_results
+        .lock()
+        .push(single_expand_result(40));
     create_delegated_expansion_grant(CreateDelegatedExpansionGrantInput {
         delegated_session_key: "agent:main:subagent:unbounded".to_string(),
         issuer_session_id: "main".to_string(),
@@ -371,9 +369,12 @@ async fn uses_remaining_grant_tokencap_when_omitted_for_summary_expansion() {
         Some("agent:main:subagent:unbounded".to_string()),
         None,
     );
-    tool.execute("call-1", json!({ "summaryIds": ["sum_a"], "conversationId": 7 }))
-        .await
-        .expect("execute");
+    tool.execute(
+        "call-1",
+        json!({ "summaryIds": ["sum_a"], "conversationId": 7 }),
+    )
+    .await
+    .expect("execute");
     let calls = retrieval.expand_calls.lock();
     assert!(calls.len() >= 1);
     assert_eq!(calls[0].summary_id, "sum_a");
@@ -399,7 +400,10 @@ async fn clamps_oversized_tokencap_for_query_expansion_to_remaining_grant_budget
         }],
         total_matches: 1,
     };
-    retrieval.expand_results.lock().push(single_expand_result(25));
+    retrieval
+        .expand_results
+        .lock()
+        .push(single_expand_result(25));
     create_delegated_expansion_grant(CreateDelegatedExpansionGrantInput {
         delegated_session_key: "agent:main:subagent:query".to_string(),
         issuer_session_id: "main".to_string(),
@@ -446,12 +450,14 @@ async fn rejects_delegated_subagent_expansion_when_no_grant_is_propagated() {
         .execute("call-missing-grant", json!({ "summaryIds": ["sum_a"] }))
         .await
         .expect("execute");
-    assert!(result
-        .details
-        .get("error")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .contains("requires a valid grant"));
+    assert!(
+        result
+            .details
+            .get("error")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .contains("requires a valid grant")
+    );
     assert!(retrieval.expand_calls.lock().is_empty());
 }
 
@@ -461,7 +467,10 @@ async fn allows_delegated_subagent_expansion_with_a_valid_grant() {
     reset_delegated_expansion_grants_for_tests();
     let retrieval = Arc::new(MockRetrieval::default());
     *retrieval.describe_result.lock() = Some(summary_describe(42));
-    retrieval.expand_results.lock().push(single_expand_result(40));
+    retrieval
+        .expand_results
+        .lock()
+        .push(single_expand_result(40));
     create_delegated_expansion_grant(CreateDelegatedExpansionGrantInput {
         delegated_session_key: "agent:main:subagent:granted".to_string(),
         issuer_session_id: "main".to_string(),
@@ -491,7 +500,10 @@ async fn allows_delegated_subagent_expansion_with_a_valid_grant() {
         result.details.get("expansionCount").and_then(Value::as_i64),
         Some(1)
     );
-    assert_eq!(result.details.get("totalTokens").and_then(Value::as_i64), Some(40));
+    assert_eq!(
+        result.details.get("totalTokens").and_then(Value::as_i64),
+        Some(40)
+    );
     assert_eq!(
         result.details.get("truncated").and_then(Value::as_bool),
         Some(false)
@@ -528,7 +540,11 @@ async fn rejects_delegated_expansion_with_an_expired_grant() {
         )
         .await
         .expect("execute");
-    let error = result.details.get("error").and_then(Value::as_str).unwrap_or_default();
+    let error = result
+        .details
+        .get("error")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     assert!(error.to_lowercase().contains("authorization failed"));
     assert!(retrieval.expand_calls.lock().is_empty());
 }
@@ -564,7 +580,11 @@ async fn rejects_delegated_expansion_with_a_revoked_grant() {
         )
         .await
         .expect("execute");
-    let error = result.details.get("error").and_then(Value::as_str).unwrap_or_default();
+    let error = result
+        .details
+        .get("error")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     assert!(error.to_lowercase().contains("authorization failed"));
     assert!(retrieval.expand_calls.lock().is_empty());
 }
@@ -598,7 +618,11 @@ async fn rejects_delegated_expansion_outside_conversation_scope() {
         )
         .await
         .expect("execute");
-    let error = result.details.get("error").and_then(Value::as_str).unwrap_or_default();
+    let error = result
+        .details
+        .get("error")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     assert!(error.to_lowercase().contains("conversation 8"));
     assert!(retrieval.expand_calls.lock().is_empty());
 }
@@ -608,7 +632,10 @@ async fn clamps_delegated_expansion_tokencap_to_grant_budget() {
     let _guard = TEST_LOCK.lock();
     reset_delegated_expansion_grants_for_tests();
     let retrieval = Arc::new(MockRetrieval::default());
-    retrieval.expand_results.lock().push(single_expand_result(5));
+    retrieval
+        .expand_results
+        .lock()
+        .push(single_expand_result(5));
     create_delegated_expansion_grant(CreateDelegatedExpansionGrantInput {
         delegated_session_key: "agent:main:subagent:token-cap".to_string(),
         issuer_session_id: "main".to_string(),
@@ -637,7 +664,10 @@ async fn clamps_delegated_expansion_tokencap_to_grant_budget() {
         result.details.get("expansionCount").and_then(Value::as_i64),
         Some(1)
     );
-    assert_eq!(result.details.get("totalTokens").and_then(Value::as_i64), Some(5));
+    assert_eq!(
+        result.details.get("totalTokens").and_then(Value::as_i64),
+        Some(5)
+    );
     assert_eq!(
         result.details.get("truncated").and_then(Value::as_bool),
         Some(false)
@@ -778,7 +808,10 @@ async fn expands_directly_from_subagent_sessions_when_policy_suggests_delegation
         ],
         total_matches: 6,
     };
-    retrieval.expand_results.lock().push(single_expand_result(10));
+    retrieval
+        .expand_results
+        .lock()
+        .push(single_expand_result(10));
     create_delegated_expansion_grant(CreateDelegatedExpansionGrantInput {
         delegated_session_key: "agent:main:subagent:direct-only".to_string(),
         issuer_session_id: "main".to_string(),

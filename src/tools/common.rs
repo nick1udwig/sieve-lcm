@@ -50,7 +50,10 @@ pub fn read_string_param(
     let raw = params.get(key);
     if raw.is_none() || raw == Some(&Value::Null) {
         if options.required {
-            anyhow::bail!("{} is required.", options.label.unwrap_or_else(|| key.to_string()));
+            anyhow::bail!(
+                "{} is required.",
+                options.label.unwrap_or_else(|| key.to_string())
+            );
         }
         return Ok(None);
     }
@@ -67,7 +70,10 @@ pub fn read_string_param(
     };
     if !options.allow_empty && value.is_empty() {
         if options.required {
-            anyhow::bail!("{} is required.", options.label.unwrap_or_else(|| key.to_string()));
+            anyhow::bail!(
+                "{} is required.",
+                options.label.unwrap_or_else(|| key.to_string())
+            );
         }
         return Ok(None);
     }

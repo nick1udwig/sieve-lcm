@@ -152,7 +152,11 @@ pub trait LcmDependencies: Send + Sync {
 
     async fn call_gateway(&self, request: GatewayCallRequest) -> anyhow::Result<Value>;
 
-    fn resolve_model(&self, model_ref: Option<&str>, provider_hint: Option<&str>) -> anyhow::Result<ModelRef>;
+    fn resolve_model(
+        &self,
+        model_ref: Option<&str>,
+        provider_hint: Option<&str>,
+    ) -> anyhow::Result<ModelRef>;
 
     fn get_api_key(&self, provider: &str, model: &str) -> Option<String>;
 

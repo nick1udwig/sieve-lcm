@@ -1,6 +1,5 @@
-use std::collections::BTreeMap;
-
 use chrono::{DateTime, Utc};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 use serde::Serialize;
 
 use crate::db::connection::get_lcm_connection;
@@ -51,7 +50,7 @@ pub struct ExpandArgs {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliError {
-    Usage(String),
+    Usage(UsageError),
     Runtime(String),
 }
 
@@ -65,6 +64,43 @@ struct CliErrorJson {
 struct CliErrorBody {
     code: String,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    usage: Option<CliUsage>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsageError {
+    pub message: String,
+    pub usage: Option<CliUsage>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CliUsage {
+    pub command: String,
+    pub syntax: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub commands: Vec<CliUsageCommand>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub options: Vec<CliUsageOption>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CliUsageCommand {
+    pub name: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CliUsageOption {
+    pub flags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value_name: Option<String>,
+    pub description: String,
+    pub required: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub choices: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -132,19 +168,43 @@ pub enum CliSuccess {
 }
 
 pub fn parse_command(raw_args: &[String]) -> Result<CliCommand, CliError> {
+    if let Some(error) = help_usage_error(raw_args) {
+        return Err(CliError::Usage(error));
+    }
+
     let Some(command) = raw_args.first().map(|value| value.trim()) else {
-        return Err(CliError::Usage(
-            "missing command (expected: ingest|query|expand)".to_string(),
+        return Err(usage_error_with_usage(
+            "missing command (expected: ingest|query|expand)",
+            root_usage_spec(),
         ));
     };
 
-    match command {
-        "ingest" => parse_ingest(&raw_args[1..]),
-        "query" => parse_query(&raw_args[1..]),
-        "expand" => parse_expand(&raw_args[1..]),
-        other => Err(CliError::Usage(format!(
-            "unknown command `{other}` (expected: ingest|query|expand)"
-        ))),
+    if !matches!(command, "ingest" | "query" | "expand") {
+        return Err(usage_error_with_usage(
+            format!("unknown command `{command}` (expected: ingest|query|expand)"),
+            root_usage_spec(),
+        ));
+    }
+
+    let usage = usage_spec_for_command(command);
+    prevalidate_raw_args(&raw_args[1..], usage.as_ref())?;
+
+    let matches = build_cli()
+        .try_get_matches_from(raw_args)
+        .map_err(|err| map_clap_usage_error(err, usage.as_ref()))?;
+
+    match matches.subcommand() {
+        Some(("ingest", args)) => parse_ingest(args),
+        Some(("query", args)) => parse_query(args),
+        Some(("expand", args)) => parse_expand(args),
+        Some((other, _)) => Err(usage_error_with_usage(
+            format!("unknown command `{other}` (expected: ingest|query|expand)"),
+            root_usage_spec(),
+        )),
+        None => Err(usage_error_with_usage(
+            "missing command (expected: ingest|query|expand)",
+            root_usage_spec(),
+        )),
     }
 }
 
@@ -162,8 +222,12 @@ pub fn serialize_success_json(output: &CliSuccess) -> Result<String, CliError> {
 }
 
 pub fn serialize_error_json(error: &CliError) -> String {
-    let (code, message) = match error {
-        CliError::Usage(message) => ("usage_error".to_string(), message.clone()),
+    let (code, message, usage) = match error {
+        CliError::Usage(error) => (
+            "usage_error".to_string(),
+            error.message.clone(),
+            error.usage.clone(),
+        ),
         CliError::Runtime(message) => {
             let lowered = message.to_ascii_lowercase();
             let code = if lowered.contains("invalid reference") {
@@ -171,13 +235,17 @@ pub fn serialize_error_json(error: &CliError) -> String {
             } else {
                 "runtime_error"
             };
-            (code.to_string(), message.clone())
+            (code.to_string(), message.clone(), None)
         }
     };
 
     serde_json::to_string(&CliErrorJson {
         ok: false,
-        error: CliErrorBody { code, message },
+        error: CliErrorBody {
+            code,
+            message,
+            usage,
+        },
     })
     .unwrap_or_else(|_| {
         "{\"ok\":false,\"error\":{\"code\":\"runtime_error\",\"message\":\"failed to encode error\"}}"
@@ -185,19 +253,12 @@ pub fn serialize_error_json(error: &CliError) -> String {
     })
 }
 
-fn parse_ingest(args: &[String]) -> Result<CliCommand, CliError> {
-    let mut flags = parse_flags(args)?;
-    let db_path = required_flag(&mut flags, "db")?;
-    let conversation = optional_flag(&mut flags, "conversation").unwrap_or_else(|| "global".to_string());
-    let role = required_flag(&mut flags, "role")?;
-    let content = required_flag(&mut flags, "content")?;
-
-    if !flags.is_empty() {
-        return Err(CliError::Usage(format!(
-            "unknown ingest flags: {}",
-            flags.keys().cloned().collect::<Vec<_>>().join(", ")
-        )));
-    }
+fn parse_ingest(args: &ArgMatches) -> Result<CliCommand, CliError> {
+    let usage = ingest_usage_spec();
+    let db_path = required_arg(args, "db", &usage)?;
+    let conversation = optional_arg(args, "conversation").unwrap_or_else(|| "global".to_string());
+    let role = required_arg(args, "role", &usage)?;
+    let content = required_arg(args, "content", &usage)?;
 
     Ok(CliCommand::Ingest(IngestArgs {
         db_path,
@@ -207,22 +268,24 @@ fn parse_ingest(args: &[String]) -> Result<CliCommand, CliError> {
     }))
 }
 
-fn parse_query(args: &[String]) -> Result<CliCommand, CliError> {
-    let mut flags = parse_flags(args)?;
-    let trusted_db_path = optional_flag(&mut flags, "trusted-db");
-    let untrusted_db_path = optional_flag(&mut flags, "untrusted-db");
-    let conversation = optional_flag(&mut flags, "conversation")
+fn parse_query(args: &ArgMatches) -> Result<CliCommand, CliError> {
+    let usage = query_usage_spec();
+    let trusted_db_path = optional_arg(args, "trusted-db");
+    let untrusted_db_path = optional_arg(args, "untrusted-db");
+    let conversation = optional_arg(args, "conversation")
         .or_else(default_global_conversation)
         .unwrap_or_else(|| "global".to_string());
-    let query = required_flag(&mut flags, "query")?;
-    let limit = optional_flag(&mut flags, "limit")
+    let query = required_arg(args, "query", &usage)?;
+    let limit = optional_arg(args, "limit")
         .map(|raw| raw.parse::<i64>())
         .transpose()
-        .map_err(|err| CliError::Usage(format!("invalid --limit value: {err}")))?
+        .map_err(|err| {
+            usage_error_with_usage(format!("invalid --limit value: {err}"), usage.clone())
+        })?
         .unwrap_or(5)
         .clamp(1, 20);
 
-    let lane = match optional_flag(&mut flags, "lane")
+    let lane = match optional_arg(args, "lane")
         .unwrap_or_else(|| "both".to_string())
         .as_str()
     {
@@ -230,18 +293,12 @@ fn parse_query(args: &[String]) -> Result<CliCommand, CliError> {
         "untrusted" => QueryLane::Untrusted,
         "both" => QueryLane::Both,
         other => {
-            return Err(CliError::Usage(format!(
-                "invalid --lane `{other}` (expected trusted|untrusted|both)"
-            )));
+            return Err(usage_error_with_usage(
+                format!("invalid --lane `{other}` (expected trusted|untrusted|both)"),
+                usage,
+            ));
         }
     };
-
-    if !flags.is_empty() {
-        return Err(CliError::Usage(format!(
-            "unknown query flags: {}",
-            flags.keys().cloned().collect::<Vec<_>>().join(", ")
-        )));
-    }
 
     Ok(CliCommand::Query(QueryArgs {
         trusted_db_path: trusted_db_path.or_else(default_trusted_db_path),
@@ -253,23 +310,17 @@ fn parse_query(args: &[String]) -> Result<CliCommand, CliError> {
     }))
 }
 
-fn parse_expand(args: &[String]) -> Result<CliCommand, CliError> {
-    let mut flags = parse_flags(args)?;
-    let untrusted_db_path =
-        optional_flag(&mut flags, "untrusted-db").or_else(default_untrusted_db_path).ok_or_else(
-            || CliError::Usage("missing required flag --untrusted-db".to_string()),
-        )?;
-    let conversation = optional_flag(&mut flags, "conversation")
+fn parse_expand(args: &ArgMatches) -> Result<CliCommand, CliError> {
+    let usage = expand_usage_spec();
+    let untrusted_db_path = optional_arg(args, "untrusted-db")
+        .or_else(default_untrusted_db_path)
+        .ok_or_else(|| {
+            usage_error_with_usage("missing required flag --untrusted-db", usage.clone())
+        })?;
+    let conversation = optional_arg(args, "conversation")
         .or_else(default_global_conversation)
         .unwrap_or_else(|| "global".to_string());
-    let reference = required_flag(&mut flags, "ref")?;
-
-    if !flags.is_empty() {
-        return Err(CliError::Usage(format!(
-            "unknown expand flags: {}",
-            flags.keys().cloned().collect::<Vec<_>>().join(", ")
-        )));
-    }
+    let reference = required_arg(args, "ref", &usage)?;
 
     Ok(CliCommand::Expand(ExpandArgs {
         untrusted_db_path,
@@ -278,8 +329,26 @@ fn parse_expand(args: &[String]) -> Result<CliCommand, CliError> {
     }))
 }
 
-fn parse_flags(args: &[String]) -> Result<BTreeMap<String, String>, CliError> {
-    let mut out = BTreeMap::new();
+fn build_cli() -> Command {
+    Command::new("sieve-lcm-cli")
+        .no_binary_name(true)
+        .disable_help_flag(true)
+        .disable_version_flag(true)
+        .subcommand_required(true)
+        .args_override_self(true)
+        .arg(
+            Arg::new("json")
+                .long("json")
+                .global(true)
+                .hide(true)
+                .action(ArgAction::SetTrue),
+        )
+        .subcommand(build_ingest_command())
+        .subcommand(build_query_command())
+        .subcommand(build_expand_command())
+}
+
+fn prevalidate_raw_args(args: &[String], usage: Option<&CliUsage>) -> Result<(), CliError> {
     let mut idx = 0usize;
     while idx < args.len() {
         let Some(raw) = args.get(idx) else {
@@ -290,44 +359,387 @@ fn parse_flags(args: &[String]) -> Result<BTreeMap<String, String>, CliError> {
             continue;
         }
         if !raw.starts_with("--") {
-            return Err(CliError::Usage(format!(
-                "unexpected positional argument `{raw}`"
-            )));
+            return Err(usage_error_with_optional_usage(
+                format!("unexpected positional argument `{raw}`"),
+                usage,
+            ));
         }
-        let name = raw.trim_start_matches("--").to_string();
         let Some(value) = args.get(idx + 1) else {
-            return Err(CliError::Usage(format!(
-                "flag `--{name}` requires a value"
-            )));
+            return Err(usage_error_with_optional_usage(
+                format!("flag `{raw}` requires a value"),
+                usage,
+            ));
         };
         if value.starts_with("--") {
-            return Err(CliError::Usage(format!(
-                "flag `--{name}` requires a value"
-            )));
+            return Err(usage_error_with_optional_usage(
+                format!("flag `{raw}` requires a value"),
+                usage,
+            ));
         }
-        out.insert(name, value.clone());
         idx += 2;
     }
-    Ok(out)
+    Ok(())
 }
 
-fn required_flag(flags: &mut BTreeMap<String, String>, name: &str) -> Result<String, CliError> {
-    flags
-        .remove(name)
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| CliError::Usage(format!("missing required flag --{name}")))
+fn build_ingest_command() -> Command {
+    Command::new("ingest")
+        .args_override_self(true)
+        .arg(string_arg("db").long("db").value_name("PATH"))
+        .arg(
+            string_arg("conversation")
+                .long("conversation")
+                .value_name("ID"),
+        )
+        .arg(string_arg("role").long("role").value_name("ROLE"))
+        .arg(string_arg("content").long("content").value_name("TEXT"))
 }
 
-fn optional_flag(flags: &mut BTreeMap<String, String>, name: &str) -> Option<String> {
-    flags
-        .remove(name)
+fn build_query_command() -> Command {
+    Command::new("query")
+        .args_override_self(true)
+        .arg(
+            string_arg("trusted-db")
+                .long("trusted-db")
+                .value_name("PATH"),
+        )
+        .arg(
+            string_arg("untrusted-db")
+                .long("untrusted-db")
+                .value_name("PATH"),
+        )
+        .arg(
+            string_arg("conversation")
+                .long("conversation")
+                .value_name("ID"),
+        )
+        .arg(string_arg("query").long("query").value_name("TEXT"))
+        .arg(string_arg("limit").long("limit").value_name("N"))
+        .arg(string_arg("lane").long("lane").value_name("LANE"))
+}
+
+fn build_expand_command() -> Command {
+    Command::new("expand")
+        .args_override_self(true)
+        .arg(
+            string_arg("untrusted-db")
+                .long("untrusted-db")
+                .value_name("PATH"),
+        )
+        .arg(
+            string_arg("conversation")
+                .long("conversation")
+                .value_name("ID"),
+        )
+        .arg(string_arg("ref").long("ref").value_name("REF"))
+}
+
+fn usage_spec_for_command(name: &str) -> Option<CliUsage> {
+    match name {
+        "ingest" => Some(ingest_usage_spec()),
+        "query" => Some(query_usage_spec()),
+        "expand" => Some(expand_usage_spec()),
+        _ => None,
+    }
+}
+
+fn root_usage_spec() -> CliUsage {
+    CliUsage {
+        command: "sieve-lcm-cli".to_string(),
+        syntax: "sieve-lcm-cli [OPTIONS] <COMMAND>".to_string(),
+        summary: Some("Tool-driven memory access for sieve-lcm.".to_string()),
+        commands: vec![
+            CliUsageCommand {
+                name: "ingest".to_string(),
+                summary: "Append a message to a lane database.".to_string(),
+            },
+            CliUsageCommand {
+                name: "query".to_string(),
+                summary: "Retrieve trusted excerpts plus untrusted opaque refs.".to_string(),
+            },
+            CliUsageCommand {
+                name: "expand".to_string(),
+                summary: "Resolve an untrusted opaque ref.".to_string(),
+            },
+        ],
+        options: common_usage_options(),
+    }
+}
+
+fn ingest_usage_spec() -> CliUsage {
+    let mut options = vec![
+        CliUsageOption {
+            flags: vec!["--db".to_string()],
+            value_name: Some("PATH".to_string()),
+            description: "Lane database path.".to_string(),
+            required: true,
+            choices: Vec::new(),
+        },
+        CliUsageOption {
+            flags: vec!["--conversation".to_string()],
+            value_name: Some("ID".to_string()),
+            description: "Conversation id. Defaults to SIEVE_LCM_GLOBAL_SESSION_ID or `global`."
+                .to_string(),
+            required: false,
+            choices: Vec::new(),
+        },
+        CliUsageOption {
+            flags: vec!["--role".to_string()],
+            value_name: Some("ROLE".to_string()),
+            description: "Message role.".to_string(),
+            required: true,
+            choices: vec![
+                "user".to_string(),
+                "assistant".to_string(),
+                "system".to_string(),
+                "tool".to_string(),
+            ],
+        },
+        CliUsageOption {
+            flags: vec!["--content".to_string()],
+            value_name: Some("TEXT".to_string()),
+            description: "Message content to ingest.".to_string(),
+            required: true,
+            choices: Vec::new(),
+        },
+    ];
+    options.extend(common_usage_options());
+
+    CliUsage {
+        command: "ingest".to_string(),
+        syntax: "sieve-lcm-cli ingest [OPTIONS]".to_string(),
+        summary: Some("Append a message to a lane database.".to_string()),
+        commands: Vec::new(),
+        options,
+    }
+}
+
+fn query_usage_spec() -> CliUsage {
+    let mut options = vec![
+        CliUsageOption {
+            flags: vec!["--trusted-db".to_string()],
+            value_name: Some("PATH".to_string()),
+            description:
+                "Trusted lane database path. Defaults to SIEVE_LCM_TRUSTED_DB_PATH or ~/.sieve/lcm/trusted.db."
+                    .to_string(),
+            required: false,
+            choices: Vec::new(),
+        },
+        CliUsageOption {
+            flags: vec!["--untrusted-db".to_string()],
+            value_name: Some("PATH".to_string()),
+            description:
+                "Untrusted lane database path. Defaults to SIEVE_LCM_UNTRUSTED_DB_PATH or ~/.sieve/lcm/untrusted.db."
+                    .to_string(),
+            required: false,
+            choices: Vec::new(),
+        },
+        CliUsageOption {
+            flags: vec!["--conversation".to_string()],
+            value_name: Some("ID".to_string()),
+            description:
+                "Conversation id. Defaults to SIEVE_LCM_GLOBAL_SESSION_ID or `global`."
+                    .to_string(),
+            required: false,
+            choices: Vec::new(),
+        },
+        CliUsageOption {
+            flags: vec!["--query".to_string()],
+            value_name: Some("TEXT".to_string()),
+            description: "Search text to match against stored records.".to_string(),
+            required: true,
+            choices: Vec::new(),
+        },
+        CliUsageOption {
+            flags: vec!["--limit".to_string()],
+            value_name: Some("N".to_string()),
+            description: "Maximum hits to return; clamped to 1..20. Defaults to 5."
+                .to_string(),
+            required: false,
+            choices: Vec::new(),
+        },
+        CliUsageOption {
+            flags: vec!["--lane".to_string()],
+            value_name: Some("LANE".to_string()),
+            description: "Which lane to search. Defaults to `both`.".to_string(),
+            required: false,
+            choices: vec![
+                "trusted".to_string(),
+                "untrusted".to_string(),
+                "both".to_string(),
+            ],
+        },
+    ];
+    options.extend(common_usage_options());
+
+    CliUsage {
+        command: "query".to_string(),
+        syntax: "sieve-lcm-cli query [OPTIONS]".to_string(),
+        summary: Some("Retrieve trusted excerpts plus untrusted opaque refs.".to_string()),
+        commands: Vec::new(),
+        options,
+    }
+}
+
+fn expand_usage_spec() -> CliUsage {
+    let mut options = vec![
+        CliUsageOption {
+            flags: vec!["--untrusted-db".to_string()],
+            value_name: Some("PATH".to_string()),
+            description:
+                "Untrusted lane database path. Defaults to SIEVE_LCM_UNTRUSTED_DB_PATH or ~/.sieve/lcm/untrusted.db."
+                    .to_string(),
+            required: false,
+            choices: Vec::new(),
+        },
+        CliUsageOption {
+            flags: vec!["--conversation".to_string()],
+            value_name: Some("ID".to_string()),
+            description:
+                "Conversation id. Defaults to SIEVE_LCM_GLOBAL_SESSION_ID or `global`."
+                    .to_string(),
+            required: false,
+            choices: Vec::new(),
+        },
+        CliUsageOption {
+            flags: vec!["--ref".to_string()],
+            value_name: Some("REF".to_string()),
+            description: "Opaque untrusted reference returned by `query`.".to_string(),
+            required: true,
+            choices: Vec::new(),
+        },
+    ];
+    options.extend(common_usage_options());
+
+    CliUsage {
+        command: "expand".to_string(),
+        syntax: "sieve-lcm-cli expand [OPTIONS]".to_string(),
+        summary: Some("Resolve an untrusted opaque ref.".to_string()),
+        commands: Vec::new(),
+        options,
+    }
+}
+
+fn common_usage_options() -> Vec<CliUsageOption> {
+    vec![
+        CliUsageOption {
+            flags: vec!["--json".to_string()],
+            value_name: None,
+            description: "Accepted for compatibility; output is JSON regardless.".to_string(),
+            required: false,
+            choices: Vec::new(),
+        },
+        CliUsageOption {
+            flags: vec!["-h".to_string(), "--help".to_string()],
+            value_name: None,
+            description: "Show usage in JSON form.".to_string(),
+            required: false,
+            choices: Vec::new(),
+        },
+    ]
+}
+
+fn help_usage_error(raw_args: &[String]) -> Option<UsageError> {
+    let first = raw_args.first().map(|value| value.trim())?;
+    if is_help_flag(first) {
+        return Some(UsageError {
+            message: "help requested".to_string(),
+            usage: Some(root_usage_spec()),
+        });
+    }
+
+    if matches!(first, "ingest" | "query" | "expand")
+        && raw_args
+            .iter()
+            .skip(1)
+            .any(|value| is_help_flag(value.trim()))
+    {
+        return Some(UsageError {
+            message: "help requested".to_string(),
+            usage: usage_spec_for_command(first),
+        });
+    }
+
+    None
+}
+
+fn is_help_flag(value: &str) -> bool {
+    matches!(value, "-h" | "--help")
+}
+
+fn usage_error(message: impl Into<String>) -> CliError {
+    CliError::Usage(UsageError {
+        message: message.into(),
+        usage: None,
+    })
+}
+
+fn usage_error_with_usage(message: impl Into<String>, usage: CliUsage) -> CliError {
+    CliError::Usage(UsageError {
+        message: message.into(),
+        usage: Some(usage),
+    })
+}
+
+fn usage_error_with_optional_usage(
+    message: impl Into<String>,
+    usage: Option<&CliUsage>,
+) -> CliError {
+    match usage {
+        Some(usage) => usage_error_with_usage(message, usage.clone()),
+        None => usage_error(message),
+    }
+}
+
+fn string_arg(name: &'static str) -> Arg {
+    Arg::new(name)
+        .action(ArgAction::Set)
+        .allow_hyphen_values(true)
+}
+
+fn map_clap_usage_error(error: clap::Error, usage: Option<&CliUsage>) -> CliError {
+    let rendered = error.to_string();
+    let compact = rendered
+        .split("\n\n")
+        .next()
+        .unwrap_or(rendered.as_str())
+        .trim()
+        .trim_start_matches("error: ")
+        .trim()
+        .to_string();
+    usage_error_with_optional_usage(compact, usage)
+}
+
+fn required_arg(matches: &ArgMatches, name: &str, usage: &CliUsage) -> Result<String, CliError> {
+    matches
+        .get_one::<String>(name)
+        .cloned()
+        .map(|value| value.trim().to_string())
+        .ok_or_else(|| {
+            usage_error_with_usage(format!("missing required flag --{name}"), usage.clone())
+        })
+        .and_then(|value| {
+            if value.is_empty() {
+                Err(usage_error_with_usage(
+                    format!("missing required flag --{name}"),
+                    usage.clone(),
+                ))
+            } else {
+                Ok(value)
+            }
+        })
+}
+
+fn optional_arg(matches: &ArgMatches, name: &str) -> Option<String> {
+    matches
+        .get_one::<String>(name)
+        .cloned()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
 }
 
 fn ingest(args: IngestArgs) -> Result<IngestOutput, CliError> {
     let lane = open_lane(&args.db_path)?;
-    let role = parse_role(&args.role)?;
+    let role = parse_role(&args.role, &ingest_usage_spec())?;
 
     let conversation = lane
         .conversation_store
@@ -369,12 +781,14 @@ fn query(args: QueryArgs) -> Result<QueryOutput, CliError> {
         let db_path = args
             .trusted_db_path
             .as_deref()
-            .ok_or_else(|| CliError::Usage("missing --trusted-db".to_string()))?;
+            .ok_or_else(|| usage_error_with_usage("missing --trusted-db", query_usage_spec()))?;
         let lane = open_lane(db_path)?;
         if let Some(conversation) = lane
             .conversation_store
             .get_conversation_by_session_id(&args.conversation)
-            .map_err(|err| CliError::Runtime(format!("trusted conversation lookup failed: {err}")))?
+            .map_err(|err| {
+                CliError::Runtime(format!("trusted conversation lookup failed: {err}"))
+            })?
         {
             let messages = lane
                 .conversation_store
@@ -386,7 +800,9 @@ fn query(args: QueryArgs) -> Result<QueryOutput, CliError> {
                     before: None,
                     limit: Some(args.limit),
                 })
-                .map_err(|err| CliError::Runtime(format!("trusted message search failed: {err}")))?;
+                .map_err(|err| {
+                    CliError::Runtime(format!("trusted message search failed: {err}"))
+                })?;
 
             let summaries = lane
                 .summary_store
@@ -398,7 +814,9 @@ fn query(args: QueryArgs) -> Result<QueryOutput, CliError> {
                     before: None,
                     limit: Some(args.limit),
                 })
-                .map_err(|err| CliError::Runtime(format!("trusted summary search failed: {err}")))?;
+                .map_err(|err| {
+                    CliError::Runtime(format!("trusted summary search failed: {err}"))
+                })?;
 
             trusted_hits.extend(messages.into_iter().map(|hit| TrustedHit {
                 id: format!("trusted:message:{}", hit.message_id),
@@ -424,12 +842,14 @@ fn query(args: QueryArgs) -> Result<QueryOutput, CliError> {
         let db_path = args
             .untrusted_db_path
             .as_deref()
-            .ok_or_else(|| CliError::Usage("missing --untrusted-db".to_string()))?;
+            .ok_or_else(|| usage_error_with_usage("missing --untrusted-db", query_usage_spec()))?;
         let lane = open_lane(db_path)?;
         if let Some(conversation) = lane
             .conversation_store
             .get_conversation_by_session_id(&args.conversation)
-            .map_err(|err| CliError::Runtime(format!("untrusted conversation lookup failed: {err}")))?
+            .map_err(|err| {
+                CliError::Runtime(format!("untrusted conversation lookup failed: {err}"))
+            })?
         {
             let messages = lane
                 .conversation_store
@@ -441,7 +861,9 @@ fn query(args: QueryArgs) -> Result<QueryOutput, CliError> {
                     before: None,
                     limit: Some(args.limit),
                 })
-                .map_err(|err| CliError::Runtime(format!("untrusted message search failed: {err}")))?;
+                .map_err(|err| {
+                    CliError::Runtime(format!("untrusted message search failed: {err}"))
+                })?;
 
             let summaries = lane
                 .summary_store
@@ -453,7 +875,9 @@ fn query(args: QueryArgs) -> Result<QueryOutput, CliError> {
                     before: None,
                     limit: Some(args.limit),
                 })
-                .map_err(|err| CliError::Runtime(format!("untrusted summary search failed: {err}")))?;
+                .map_err(|err| {
+                    CliError::Runtime(format!("untrusted summary search failed: {err}"))
+                })?;
 
             untrusted_refs.extend(messages.into_iter().map(|hit| UntrustedRef {
                 opaque_ref: format!("lcm:untrusted:message:{}", hit.message_id),
@@ -501,7 +925,9 @@ fn expand(args: ExpandArgs) -> Result<ExpandOutput, CliError> {
         .conversation_store
         .get_conversation_by_session_id(&args.conversation)
         .map_err(|err| CliError::Runtime(format!("conversation lookup failed: {err}")))?
-        .ok_or_else(|| CliError::Runtime("invalid reference: conversation not found".to_string()))?;
+        .ok_or_else(|| {
+            CliError::Runtime("invalid reference: conversation not found".to_string())
+        })?;
 
     let parsed = parse_untrusted_ref(&args.reference)?;
     match parsed {
@@ -569,7 +995,9 @@ fn parse_untrusted_ref(reference: &str) -> Result<ParsedRef, CliError> {
 
     if let Some(message) = rest.strip_prefix("message:") {
         let id = message.parse::<i64>().map_err(|err| {
-            CliError::Runtime(format!("invalid reference: message id is not an integer: {err}"))
+            CliError::Runtime(format!(
+                "invalid reference: message id is not an integer: {err}"
+            ))
         })?;
         return Ok(ParsedRef::Message(id));
     }
@@ -592,15 +1020,16 @@ fn parse_untrusted_ref(reference: &str) -> Result<ParsedRef, CliError> {
     Ok(ParsedRef::Summary(rest.to_string()))
 }
 
-fn parse_role(raw: &str) -> Result<MessageRole, CliError> {
+fn parse_role(raw: &str, usage: &CliUsage) -> Result<MessageRole, CliError> {
     match raw.trim() {
         "user" => Ok(MessageRole::User),
         "assistant" => Ok(MessageRole::Assistant),
         "system" => Ok(MessageRole::System),
         "tool" => Ok(MessageRole::Tool),
-        other => Err(CliError::Usage(format!(
-            "invalid --role `{other}` (expected user|assistant|system|tool)"
-        ))),
+        other => Err(usage_error_with_usage(
+            format!("invalid --role `{other}` (expected user|assistant|system|tool)"),
+            usage.clone(),
+        )),
     }
 }
 
@@ -649,8 +1078,8 @@ struct OpenLane {
 }
 
 fn open_lane(path: &str) -> Result<OpenLane, CliError> {
-    let shared =
-        get_lcm_connection(path).map_err(|err| CliError::Runtime(format!("open db failed: {err}")))?;
+    let shared = get_lcm_connection(path)
+        .map_err(|err| CliError::Runtime(format!("open db failed: {err}")))?;
 
     {
         let guard = shared.conn.lock();

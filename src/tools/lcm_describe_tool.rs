@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::engine::LcmContextEngineApi;
-use crate::expansion_auth::{get_runtime_expansion_auth_manager, resolve_delegated_expansion_grant_id};
+use crate::expansion_auth::{
+    get_runtime_expansion_auth_manager, resolve_delegated_expansion_grant_id,
+};
 use crate::retrieval::{DescribeResultType, DescribeSubtreeNode, DescribeSummary};
 use crate::tools::common::{ToolContentBlock, ToolResult, json_result};
 use crate::tools::lcm_conversation_scope::resolve_lcm_conversation_scope;
@@ -40,11 +42,7 @@ fn format_number_en_us(value: i64) -> String {
         }
         out.push(ch);
     }
-    if negative {
-        format!("-{}", out)
-    } else {
-        out
-    }
+    if negative { format!("-{}", out) } else { out }
 }
 
 #[derive(Clone)]
@@ -141,7 +139,9 @@ impl LcmDescribeTool {
             DescribeResultType::Summary(summary) => Some(summary.conversation_id),
             DescribeResultType::File(file) => Some(file.conversation_id),
         };
-        if let (Some(scope_id), Some(item_id)) = (conversation_scope.conversation_id, item_conversation_id) {
+        if let (Some(scope_id), Some(item_id)) =
+            (conversation_scope.conversation_id, item_conversation_id)
+        {
             if item_id != scope_id {
                 return Ok(json_result(json!({
                     "error": format!("Not found in conversation {}: {}", scope_id, id),
@@ -165,9 +165,8 @@ impl LcmDescribeTool {
                 } else {
                     None
                 };
-                let delegated_remaining_budget = delegated_grant_id
-                    .as_deref()
-                    .and_then(|grant_id| {
+                let delegated_remaining_budget =
+                    delegated_grant_id.as_deref().and_then(|grant_id| {
                         get_runtime_expansion_auth_manager()
                             .lock()
                             .get_remaining_token_budget(grant_id)
@@ -189,7 +188,8 @@ impl LcmDescribeTool {
                     .subtree
                     .iter()
                     .map(|node| {
-                        let summaries_only_cost = (node.token_count + node.descendant_token_count).max(0);
+                        let summaries_only_cost =
+                            (node.token_count + node.descendant_token_count).max(0);
                         let with_messages_cost =
                             (summaries_only_cost + node.source_message_token_count).max(0);
                         json!({
@@ -262,11 +262,24 @@ impl LcmDescribeTool {
                     format!("## LCM File: {}", id),
                     String::new(),
                     format!("**Conversation:** {}", file.conversation_id),
-                    format!("**Name:** {}", file.file_name.clone().unwrap_or_else(|| "(no name)".to_string())),
-                    format!("**Type:** {}", file.mime_type.clone().unwrap_or_else(|| "unknown".to_string())),
+                    format!(
+                        "**Name:** {}",
+                        file.file_name
+                            .clone()
+                            .unwrap_or_else(|| "(no name)".to_string())
+                    ),
+                    format!(
+                        "**Type:** {}",
+                        file.mime_type
+                            .clone()
+                            .unwrap_or_else(|| "unknown".to_string())
+                    ),
                 ];
                 if let Some(byte_size) = file.byte_size {
-                    lines.push(format!("**Size:** {} bytes", format_number_en_us(byte_size)));
+                    lines.push(format!(
+                        "**Size:** {} bytes",
+                        format_number_en_us(byte_size)
+                    ));
                 }
                 lines.push(format!("**Created:** {}", file.created_at.to_rfc3339()));
                 if let Some(summary) = &file.exploration_summary {

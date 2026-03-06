@@ -7,22 +7,34 @@ fn quotes_simple_tokens() {
 
 #[test]
 fn preserves_hyphens_inside_quotes() {
-    assert_eq!(sanitize_fts5_query("sub-agent restrict"), "\"sub-agent\" \"restrict\"");
+    assert_eq!(
+        sanitize_fts5_query("sub-agent restrict"),
+        "\"sub-agent\" \"restrict\""
+    );
 }
 
 #[test]
 fn neutralizes_boolean_operators() {
-    assert_eq!(sanitize_fts5_query("lcm_expand OR crash"), "\"lcm_expand\" \"OR\" \"crash\"");
+    assert_eq!(
+        sanitize_fts5_query("lcm_expand OR crash"),
+        "\"lcm_expand\" \"OR\" \"crash\""
+    );
 }
 
 #[test]
 fn strips_internal_double_quotes() {
-    assert_eq!(sanitize_fts5_query("hello \"world\""), "\"hello\" \"world\"");
+    assert_eq!(
+        sanitize_fts5_query("hello \"world\""),
+        "\"hello\" \"world\""
+    );
 }
 
 #[test]
 fn handles_colons_column_filter_syntax() {
-    assert_eq!(sanitize_fts5_query("agent:foo bar"), "\"agent:foo\" \"bar\"");
+    assert_eq!(
+        sanitize_fts5_query("agent:foo bar"),
+        "\"agent:foo\" \"bar\""
+    );
 }
 
 #[test]

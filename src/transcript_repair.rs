@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::Utc;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::types::AgentMessage;
 
@@ -165,9 +165,5 @@ pub fn sanitize_tool_use_result_pairing(messages: Vec<AgentMessage>) -> Vec<Agen
         i = j;
     }
 
-    if changed {
-        out
-    } else {
-        messages
-    }
+    if changed { out } else { messages }
 }

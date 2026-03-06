@@ -4,9 +4,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use parking_lot::Mutex;
 use serde_json::json;
-use sieve_lcm::expansion::{
-    ExpansionOrchestrator, ExpansionToolDefinition,
-};
+use sieve_lcm::expansion::{ExpansionOrchestrator, ExpansionToolDefinition};
 use sieve_lcm::retrieval::{
     DescribeResult, ExpandInput, ExpandResult, ExpandedChild, GrepInput, GrepResult, RetrievalApi,
 };
@@ -73,9 +71,7 @@ async fn defaults_omitted_token_cap_for_summary_expansion_to_config_max() {
     let expand_calls = retrieval.expand_calls.lock();
     assert!(expand_calls.len() >= 1);
     let expand_calls = vec![SpyCall {
-        args: vec![
-            "expect.objectContaining({summaryIds:[\"sum_a\"],tokenCap:250,})".to_string(),
-        ],
+        args: vec!["expect.objectContaining({summaryIds:[\"sum_a\"],tokenCap:250,})".to_string()],
     }];
     assert_eq!(
         expand_calls[0].args[0],

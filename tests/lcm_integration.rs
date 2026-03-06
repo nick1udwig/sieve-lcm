@@ -464,7 +464,10 @@ async fn degrades_tool_rows_without_tool_call_id_to_assistant_text() {
 
     assert_eq!(result.messages.len(), 1);
     assert_eq!(result.messages[0].role, "assistant");
-    assert!(extract_message_text(&result.messages[0].content).contains("legacy tool output without call id"));
+    assert!(
+        extract_message_text(&result.messages[0].content)
+            .contains("legacy tool output without call id")
+    );
 }
 
 #[tokio::test]
@@ -505,10 +508,12 @@ async fn compaction_creates_leaf_summary_from_oldest_messages() {
         .expect("compact");
 
     assert!(result.action_taken);
-    assert!(result
-        .created_summary_id
-        .as_deref()
-        .is_some_and(|id| id.starts_with("sum_")));
+    assert!(
+        result
+            .created_summary_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("sum_"))
+    );
 
     let all_summaries = h
         .sum_store
@@ -591,7 +596,8 @@ async fn compact_leaf_uses_preceding_summary_context_for_soft_leaf_continuity() 
     .await
     .expect("ingest");
 
-    let summarize_calls: Arc<Mutex<Vec<Option<LcmSummarizeOptions>>>> = Arc::new(Mutex::new(vec![]));
+    let summarize_calls: Arc<Mutex<Vec<Option<LcmSummarizeOptions>>>> =
+        Arc::new(Mutex::new(vec![]));
     let summarize_calls_ref = summarize_calls.clone();
     let summarize = summarize_fn(move |_text, _aggressive, options| {
         summarize_calls_ref.lock().push(options);
@@ -711,7 +717,8 @@ async fn compact_leaf_keeps_incremental_behavior_leaf_only_when_incremental_max_
 }
 
 #[tokio::test]
-async fn compact_leaf_performs_one_depth_zero_condensation_pass_when_incremental_max_depth_is_one() {
+async fn compact_leaf_performs_one_depth_zero_condensation_pass_when_incremental_max_depth_is_one()
+{
     let h = Harness::new();
     let engine = h.compaction_engine(CompactionConfig {
         fresh_tail_count: 0,
@@ -945,9 +952,8 @@ async fn compaction_propagates_referenced_file_ids_into_summary_metadata() {
     .await
     .expect("ingest");
 
-    let summarize = summarize_fn(|_text, _aggressive, _options| {
-        "Condensed file-aware summary.".to_string()
-    });
+    let summarize =
+        summarize_fn(|_text, _aggressive, _options| "Condensed file-aware summary.".to_string());
     let result = engine
         .compact(CompactInput {
             conversation_id: h.conversation_id,
@@ -1025,15 +1031,15 @@ async fn compaction_emits_one_durable_compaction_part_for_a_leaf_only_pass() {
     assert!(metadata["tokensBefore"].is_number());
     assert!(metadata["tokensAfter"].is_number());
     assert!(
-        metadata["tokensBefore"]
-            .as_i64()
-            .expect("tokens before")
+        metadata["tokensBefore"].as_i64().expect("tokens before")
             > metadata["tokensAfter"].as_i64().expect("tokens after")
     );
     assert!(metadata.get("level").is_some());
     assert!(metadata["createdSummaryId"].as_str().is_some());
     let created_summary_id = metadata["createdSummaryId"].as_str().expect("summary id");
-    let created_summary_ids = metadata["createdSummaryIds"].as_array().expect("summary ids");
+    let created_summary_ids = metadata["createdSummaryIds"]
+        .as_array()
+        .expect("summary ids");
     assert_eq!(created_summary_ids.len(), 1);
     assert_eq!(created_summary_ids[0].as_str(), Some(created_summary_id));
     assert_eq!(metadata["condensedPassOccurred"].as_bool(), Some(false));
@@ -1088,7 +1094,9 @@ async fn compaction_emits_durable_compaction_parts_for_leaf_and_condensed_passes
     assert!(compaction_parts.len() >= 2);
     let metadata: Vec<Value> = compaction_parts
         .iter()
-        .map(|part| serde_json::from_str(part.metadata.as_deref().unwrap_or("{}")).expect("metadata"))
+        .map(|part| {
+            serde_json::from_str(part.metadata.as_deref().unwrap_or("{}")).expect("metadata")
+        })
         .collect();
 
     let leaf_part = metadata
@@ -1100,8 +1108,14 @@ async fn compaction_emits_durable_compaction_parts_for_leaf_and_condensed_passes
         .find(|value| value["pass"].as_str() == Some("condensed"))
         .expect("condensed part");
 
-    assert_eq!(leaf_part["conversationId"].as_i64(), Some(h.conversation_id));
-    assert_eq!(condensed_part["conversationId"].as_i64(), Some(h.conversation_id));
+    assert_eq!(
+        leaf_part["conversationId"].as_i64(),
+        Some(h.conversation_id)
+    );
+    assert_eq!(
+        condensed_part["conversationId"].as_i64(),
+        Some(h.conversation_id)
+    );
     assert!(leaf_part["tokensBefore"].is_number());
     assert!(leaf_part["tokensAfter"].is_number());
     assert!(condensed_part["tokensBefore"].is_number());
@@ -1162,7 +1176,8 @@ async fn depth_aware_condensation_sets_condensed_depth_to_max_parent_depth_plus_
             .expect("append summary");
     }
 
-    let summarize = summarize_fn(|_text, _aggressive, _options| "Depth two merged summary".to_string());
+    let summarize =
+        summarize_fn(|_text, _aggressive, _options| "Depth two merged summary".to_string());
     let result = engine
         .compact(CompactInput {
             conversation_id: h.conversation_id,
@@ -1177,7 +1192,12 @@ async fn depth_aware_condensation_sets_condensed_depth_to_max_parent_depth_plus_
     assert!(result.action_taken);
     let created_summary = h
         .sum_store
-        .get_summary(result.created_summary_id.as_deref().expect("created summary id"))
+        .get_summary(
+            result
+                .created_summary_id
+                .as_deref()
+                .expect("created summary id"),
+        )
         .expect("summary lookup");
     assert!(created_summary.is_some());
     let created = h
@@ -1205,10 +1225,30 @@ async fn depth_aware_selection_stops_on_depth_mismatch_and_does_not_mix_depth_ba
     });
 
     let summaries = vec![
-        ("sum_break_leaf_1", SummaryKind::Leaf, 0, "Leaf depth zero A"),
-        ("sum_break_leaf_2", SummaryKind::Leaf, 0, "Leaf depth zero B"),
-        ("sum_break_mid_1", SummaryKind::Condensed, 1, "Depth one block"),
-        ("sum_break_leaf_3", SummaryKind::Leaf, 0, "Leaf depth zero C"),
+        (
+            "sum_break_leaf_1",
+            SummaryKind::Leaf,
+            0,
+            "Leaf depth zero A",
+        ),
+        (
+            "sum_break_leaf_2",
+            SummaryKind::Leaf,
+            0,
+            "Leaf depth zero B",
+        ),
+        (
+            "sum_break_mid_1",
+            SummaryKind::Condensed,
+            1,
+            "Depth one block",
+        ),
+        (
+            "sum_break_leaf_3",
+            SummaryKind::Leaf,
+            0,
+            "Leaf depth zero C",
+        ),
     ];
     for (summary_id, kind, depth, content) in summaries {
         h.sum_store
@@ -1232,7 +1272,8 @@ async fn depth_aware_selection_stops_on_depth_mismatch_and_does_not_mix_depth_ba
             .expect("append summary");
     }
 
-    let summarize = summarize_fn(|_text, _aggressive, _options| "Depth-aware merged summary".to_string());
+    let summarize =
+        summarize_fn(|_text, _aggressive, _options| "Depth-aware merged summary".to_string());
     let result = engine
         .compact(CompactInput {
             conversation_id: h.conversation_id,
@@ -1259,7 +1300,10 @@ async fn depth_aware_selection_stops_on_depth_mismatch_and_does_not_mix_depth_ba
         .collect::<Vec<String>>();
     assert_eq!(
         parent_ids,
-        vec!["sum_break_leaf_1".to_string(), "sum_break_leaf_2".to_string()]
+        vec![
+            "sum_break_leaf_1".to_string(),
+            "sum_break_leaf_2".to_string()
+        ]
     );
 }
 
@@ -1287,8 +1331,18 @@ async fn depth_aware_phase_two_processes_shallowest_eligible_depth_first() {
             1,
             "D1-B existing condensed context",
         ),
-        ("sum_depth_zero_a", SummaryKind::Leaf, 0, "L0-A leaf context"),
-        ("sum_depth_zero_b", SummaryKind::Leaf, 0, "L0-B leaf context"),
+        (
+            "sum_depth_zero_a",
+            SummaryKind::Leaf,
+            0,
+            "L0-A leaf context",
+        ),
+        (
+            "sum_depth_zero_b",
+            SummaryKind::Leaf,
+            0,
+            "L0-B leaf context",
+        ),
     ];
     for (summary_id, kind, depth, content) in summaries {
         h.sum_store
@@ -1337,7 +1391,11 @@ async fn depth_aware_phase_two_processes_shallowest_eligible_depth_first() {
         .cloned()
         .expect("first summarize input");
     let first_source_normalized = first_source.to_lowercase().replace(" ", "");
-    assert!(Regex::new(r"^\[\d{4}-\d{2}-\d{2}\d{2}:\d{2}utc-\d{4}-\d{2}-\d{2}\d{2}:\d{2}utc\]").expect("regex").is_match(&first_source_normalized));
+    assert!(
+        Regex::new(r"^\[\d{4}-\d{2}-\d{2}\d{2}:\d{2}utc-\d{4}-\d{2}-\d{2}\d{2}:\d{2}utc\]")
+            .expect("regex")
+            .is_match(&first_source_normalized)
+    );
     assert!(first_source.contains("L0-A leaf context"));
     assert!(first_source.contains("L0-B leaf context"));
     assert!(!first_source.contains("D1-A existing condensed context"));
@@ -1431,7 +1489,8 @@ async fn includes_continuity_context_only_when_condensing_depth_zero_summaries()
             .expect("append summary");
     }
 
-    let depth_zero_calls: Arc<Mutex<Vec<Option<LcmSummarizeOptions>>>> = Arc::new(Mutex::new(vec![]));
+    let depth_zero_calls: Arc<Mutex<Vec<Option<LcmSummarizeOptions>>>> =
+        Arc::new(Mutex::new(vec![]));
     let depth_zero_calls_ref = depth_zero_calls.clone();
     let summarize_depth_zero = summarize_fn(move |_text, _aggressive, options| {
         depth_zero_calls_ref.lock().push(options);
@@ -1505,7 +1564,8 @@ async fn enforces_fanout_thresholds_and_only_relaxes_them_in_hard_trigger_mode()
             .expect("append summary");
     }
 
-    let summarize = summarize_fn(|_text, _aggressive, _options| "Fanout relaxed summary".to_string());
+    let summarize =
+        summarize_fn(|_text, _aggressive, _options| "Fanout relaxed summary".to_string());
     let normal_result = engine
         .compact(CompactInput {
             conversation_id: h.conversation_id,
@@ -2142,7 +2202,11 @@ async fn describe_returns_file_info_for_file_ids() {
 #[tokio::test]
 async fn describe_returns_null_for_unknown_ids() {
     let h = Harness::new();
-    let result = h.retrieval.describe("sum_nonexistent").await.expect("describe");
+    let result = h
+        .retrieval
+        .describe("sum_nonexistent")
+        .await
+        .expect("describe");
     assert!(result.is_none());
 }
 
@@ -2347,19 +2411,31 @@ async fn grep_returns_timestamps_and_orders_matches_by_recency() {
         .expect("grep");
 
     assert_eq!(
-        result.messages.first().map(|row| row.created_at.to_rfc3339()),
+        result
+            .messages
+            .first()
+            .map(|row| row.created_at.to_rfc3339()),
         Some(new_time.to_rfc3339())
     );
     assert_eq!(
-        result.messages.last().map(|row| row.created_at.to_rfc3339()),
+        result
+            .messages
+            .last()
+            .map(|row| row.created_at.to_rfc3339()),
         Some(old_time.to_rfc3339())
     );
     assert_eq!(
-        result.summaries.first().map(|row| row.created_at.to_rfc3339()),
+        result
+            .summaries
+            .first()
+            .map(|row| row.created_at.to_rfc3339()),
         Some(new_time.to_rfc3339())
     );
     assert_eq!(
-        result.summaries.last().map(|row| row.created_at.to_rfc3339()),
+        result
+            .summaries
+            .last()
+            .map(|row| row.created_at.to_rfc3339()),
         Some(mid_time.to_rfc3339())
     );
 }
@@ -2757,7 +2833,9 @@ async fn messages_survive_compaction_and_remain_retrievable() {
     );
     assert!(last_content.contains("Discussion turn 19"));
 
-    let created_summary_id = compact_result.created_summary_id.expect("created summary id");
+    let created_summary_id = compact_result
+        .created_summary_id
+        .expect("created summary id");
     let describe_result = h
         .retrieval
         .describe(&created_summary_id)
@@ -2901,7 +2979,8 @@ async fn assembled_context_maintains_correct_message_ordering_after_compaction()
     .await
     .expect("ingest");
 
-    let summarize = summarize_fn(|_text, _aggressive, _options| "Summary of early messages.".to_string());
+    let summarize =
+        summarize_fn(|_text, _aggressive, _options| "Summary of early messages.".to_string());
     let _ = compaction
         .compact(CompactInput {
             conversation_id: h.conversation_id,

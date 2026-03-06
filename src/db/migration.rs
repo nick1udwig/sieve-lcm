@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, NaiveDateTime, SecondsFormat, Utc};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 #[derive(Clone)]
 struct SummaryDepthRow {
@@ -184,7 +184,10 @@ fn backfill_summary_depths(db: &Connection) -> anyhow::Result<()> {
             let mut progressed = false;
             let unresolved: Vec<String> = unresolved_condensed_ids.iter().cloned().collect();
             for summary_id in unresolved {
-                let parent_ids = parents_by_summary_id.get(&summary_id).cloned().unwrap_or_default();
+                let parent_ids = parents_by_summary_id
+                    .get(&summary_id)
+                    .cloned()
+                    .unwrap_or_default();
                 if parent_ids.is_empty() {
                     depth_by_summary_id.insert(summary_id.clone(), 1);
                     unresolved_condensed_ids.remove(&summary_id);
@@ -323,7 +326,8 @@ fn backfill_summary_metadata(db: &Connection) -> anyhow::Result<()> {
         let mut metadata_by_summary_id: HashMap<String, SummaryMetadata> = HashMap::new();
         let mut token_count_by_summary_id: HashMap<String, i64> = HashMap::new();
         for summary in &summaries {
-            token_count_by_summary_id.insert(summary.summary_id.clone(), summary.token_count.max(0));
+            token_count_by_summary_id
+                .insert(summary.summary_id.clone(), summary.token_count.max(0));
         }
 
         for summary in &summaries {
@@ -398,8 +402,11 @@ fn backfill_summary_metadata(db: &Connection) -> anyhow::Result<()> {
                 }
 
                 descendant_count += parent_meta.descendant_count.max(0) + 1;
-                let parent_token_count =
-                    token_count_by_summary_id.get(&parent_id).copied().unwrap_or(0).max(0);
+                let parent_token_count = token_count_by_summary_id
+                    .get(&parent_id)
+                    .copied()
+                    .unwrap_or(0)
+                    .max(0);
                 descendant_token_count +=
                     parent_token_count + parent_meta.descendant_token_count.max(0);
                 source_message_token_count += parent_meta.source_message_token_count.max(0);

@@ -4,12 +4,12 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sieve_lcm::db::config::LcmConfig;
 use sieve_lcm::engine::{ContextEngineInfo, ConversationLookupApi, LcmContextEngineApi};
 use sieve_lcm::expansion_auth::{
-    create_delegated_expansion_grant, resolve_delegated_expansion_grant_id,
-    reset_delegated_expansion_grants_for_tests, CreateDelegatedExpansionGrantInput,
+    CreateDelegatedExpansionGrantInput, create_delegated_expansion_grant,
+    reset_delegated_expansion_grants_for_tests, resolve_delegated_expansion_grant_id,
 };
 use sieve_lcm::retrieval::{
     DescribeResult, DescribeResultType, DescribeSummary, ExpandInput, ExpandResult, GrepInput,
@@ -20,8 +20,8 @@ use sieve_lcm::store::summary_store::{SummaryKind, SummarySearchResult};
 use sieve_lcm::tools::lcm_expand_query_tool::create_lcm_expand_query_tool;
 use sieve_lcm::tools::lcm_expansion_recursion_guard::{
     get_delegated_expansion_context_for_tests,
-    get_expansion_delegation_telemetry_snapshot_for_tests, reset_expansion_delegation_guard_for_tests,
-    stamp_delegated_expansion_context,
+    get_expansion_delegation_telemetry_snapshot_for_tests,
+    reset_expansion_delegation_guard_for_tests, stamp_delegated_expansion_context,
 };
 use sieve_lcm::types::{
     CompletionRequest, CompletionResult, GatewayCallRequest, LcmDependencies, LcmLogger, ModelRef,
@@ -402,24 +402,37 @@ async fn returns_focused_delegated_answer_for_explicit_summary_ids() {
         Some("Issue traced to stale token handling.")
     );
     assert_eq!(
-        result.details.get("citedIds").and_then(Value::as_array).map(|arr| {
-            arr.iter()
-                .filter_map(Value::as_str)
-                .map(ToString::to_string)
-                .collect::<Vec<String>>()
-        }),
+        result
+            .details
+            .get("citedIds")
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(Value::as_str)
+                    .map(ToString::to_string)
+                    .collect::<Vec<String>>()
+            }),
         Some(vec!["sum_a".to_string()])
     );
     assert_eq!(
-        result.details.get("sourceConversationId").and_then(Value::as_i64),
+        result
+            .details
+            .get("sourceConversationId")
+            .and_then(Value::as_i64),
         Some(42)
     );
     assert_eq!(
-        result.details.get("expandedSummaryCount").and_then(Value::as_i64),
+        result
+            .details
+            .get("expandedSummaryCount")
+            .and_then(Value::as_i64),
         Some(1)
     );
     assert_eq!(
-        result.details.get("totalSourceTokens").and_then(Value::as_i64),
+        result
+            .details
+            .get("totalSourceTokens")
+            .and_then(Value::as_i64),
         Some(45000)
     );
     assert_eq!(
@@ -443,7 +456,9 @@ async fn returns_focused_delegated_answer_for_explicit_summary_ids() {
     assert!(message.contains("lcm_expand"));
     assert!(message.contains("lcm_describe"));
     assert!(message.contains("DO NOT call `lcm_expand_query` from this delegated session."));
-    assert!(message.contains("Synthesize the final answer from retrieved evidence, not assumptions."));
+    assert!(
+        message.contains("Synthesize the final answer from retrieved evidence, not assumptions.")
+    );
     assert!(message.contains("Expansion token budget"));
 
     let delegated_key = delegated_session_key.lock().clone();
@@ -559,12 +574,14 @@ async fn returns_timeout_when_delegated_run_exceeds_120_seconds() {
         )
         .await
         .expect("execute");
-    assert!(result
-        .details
-        .get("error")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .contains("timed out"));
+    assert!(
+        result
+            .details
+            .get("error")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .contains("timed out")
+    );
     let methods = gateway_calls
         .lock()
         .iter()
@@ -702,7 +719,8 @@ async fn greps_summaries_first_when_query_is_provided() {
         }
     }));
 
-    let engine: Arc<dyn LcmContextEngineApi> = Arc::new(MockEngine::new(retrieval.clone(), Some(7)));
+    let engine: Arc<dyn LcmContextEngineApi> =
+        Arc::new(MockEngine::new(retrieval.clone(), Some(7)));
     let tool = create_lcm_expand_query_tool(
         deps,
         engine,
@@ -745,7 +763,10 @@ async fn greps_summaries_first_when_query_is_provided() {
     assert!(message.contains("sum_y"));
 
     assert_eq!(
-        result.details.get("sourceConversationId").and_then(Value::as_i64),
+        result
+            .details
+            .get("sourceConversationId")
+            .and_then(Value::as_i64),
         Some(7)
     );
     assert_eq!(
@@ -756,12 +777,16 @@ async fn greps_summaries_first_when_query_is_provided() {
         Some(2)
     );
     assert_eq!(
-        result.details.get("citedIds").and_then(Value::as_array).map(|arr| {
-            arr.iter()
-                .filter_map(Value::as_str)
-                .map(ToString::to_string)
-                .collect::<Vec<String>>()
-        }),
+        result
+            .details
+            .get("citedIds")
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(Value::as_str)
+                    .map(ToString::to_string)
+                    .collect::<Vec<String>>()
+            }),
         Some(vec!["sum_x".to_string(), "sum_y".to_string()])
     );
 }
@@ -829,8 +854,15 @@ async fn blocks_delegated_reentry_with_deterministic_recursion_errors() {
         first.details.get("requestId").and_then(Value::as_str),
         Some("req-recursive")
     );
-    let first_error = first.details.get("error").and_then(Value::as_str).unwrap_or_default();
-    assert!(first_error.contains("Recovery: In delegated sub-agent sessions, call `lcm_expand` directly"));
+    let first_error = first
+        .details
+        .get("error")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        first_error
+            .contains("Recovery: In delegated sub-agent sessions, call `lcm_expand` directly")
+    );
     assert!(first_error.contains("Do NOT call `lcm_expand_query` from delegated context."));
 
     let second = tool

@@ -4,11 +4,13 @@ use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use parking_lot::Mutex;
 use regex::Regex;
-use sieve_lcm::expansion::{distill_for_subagent, ExpansionOrchestrator, ExpansionRequest, ExpansionResult};
-use sieve_lcm::expansion_auth::{wrap_with_auth, CreateGrantInput, ExpansionAuthManager};
+use sieve_lcm::expansion::{
+    ExpansionOrchestrator, ExpansionRequest, ExpansionResult, distill_for_subagent,
+};
+use sieve_lcm::expansion_auth::{CreateGrantInput, ExpansionAuthManager, wrap_with_auth};
 use sieve_lcm::retrieval::{
-    DescribeResult, ExpandInput, ExpandResult, ExpandedChild, ExpandedMessage, GrepInput, GrepResult,
-    RetrievalApi,
+    DescribeResult, ExpandInput, ExpandResult, ExpandedChild, ExpandedMessage, GrepInput,
+    GrepResult, RetrievalApi,
 };
 use sieve_lcm::store::summary_store::{SummaryKind, SummarySearchResult};
 
@@ -310,7 +312,11 @@ fn rejects_when_some_summary_ids_are_authorized_and_some_are_not() {
     let result = manager.validate_expansion(
         &grant_id,
         1,
-        &["sum_a".to_string(), "sum_c".to_string(), "sum_d".to_string()],
+        &[
+            "sum_a".to_string(),
+            "sum_c".to_string(),
+            "sum_d".to_string(),
+        ],
         1,
         1000,
     );
@@ -355,7 +361,11 @@ fn allows_any_summary_ids_when_allowed_summary_ids_is_omitted_defaults_to_empty(
     let result = manager.validate_expansion(
         &grant.grant_id,
         1,
-        &["sum_x".to_string(), "sum_y".to_string(), "sum_z".to_string()],
+        &[
+            "sum_x".to_string(),
+            "sum_y".to_string(),
+            "sum_z".to_string(),
+        ],
         1,
         1000,
     );
@@ -383,7 +393,8 @@ fn does_not_enforce_token_cap_against_grant_limits() {
 #[test]
 fn checks_validation_in_priority_order_existence_revocation_expiry_scope() {
     let manager = ExpansionAuthManager::new();
-    let result = manager.validate_expansion("grant_nope", 999, &["sum_c".to_string()], 100, 999_999);
+    let result =
+        manager.validate_expansion("grant_nope", 999, &["sum_c".to_string()], 100, 999_999);
     assert!(result.reason.unwrap_or_default().contains("not found"));
 }
 
@@ -514,7 +525,10 @@ async fn delegates_to_orchestrator_when_grant_is_valid() {
 async fn throws_when_grant_is_invalid() {
     let retrieval = Arc::new(MockRetrieval::default());
     let orchestrator = Arc::new(ExpansionOrchestrator::new(retrieval.clone()));
-    let authorized = wrap_with_auth(orchestrator, Arc::new(Mutex::new(ExpansionAuthManager::new())));
+    let authorized = wrap_with_auth(
+        orchestrator,
+        Arc::new(Mutex::new(ExpansionAuthManager::new())),
+    );
     let request = ExpansionRequest {
         summary_ids: vec!["sum_a".to_string()],
         conversation_id: 1,
@@ -527,7 +541,11 @@ async fn throws_when_grant_is_invalid() {
         .await
         .expect_err("should reject");
     let error = err.to_string().to_lowercase().replace(" ", "");
-    assert!(Regex::new("(?i)authorizationfailed.*notfound").expect("regex").is_match(&error));
+    assert!(
+        Regex::new("(?i)authorizationfailed.*notfound")
+            .expect("regex")
+            .is_match(&error)
+    );
     assert!(retrieval.expand_calls.lock().is_empty());
 }
 
@@ -559,7 +577,11 @@ async fn throws_when_grant_is_expired() {
         .await
         .expect_err("should reject expired");
     let error = err.to_string().to_lowercase().replace(" ", "");
-    assert!(Regex::new("(?i)authorizationfailed.*expired").expect("regex").is_match(&error));
+    assert!(
+        Regex::new("(?i)authorizationfailed.*expired")
+            .expect("regex")
+            .is_match(&error)
+    );
     assert!(retrieval.expand_calls.lock().is_empty());
 }
 
@@ -592,13 +614,20 @@ async fn throws_when_grant_is_revoked() {
         .await
         .expect_err("should reject revoked");
     let error = err.to_string().to_lowercase().replace(" ", "");
-    assert!(Regex::new("(?i)authorizationfailed.*revoked").expect("regex").is_match(&error));
+    assert!(
+        Regex::new("(?i)authorizationfailed.*revoked")
+            .expect("regex")
+            .is_match(&error)
+    );
 }
 
 #[tokio::test]
 async fn passes_through_explicit_token_cap_values() {
     let retrieval = Arc::new(MockRetrieval::default());
-    retrieval.expand_results.lock().push(default_expand_result());
+    retrieval
+        .expand_results
+        .lock()
+        .push(default_expand_result());
     let orchestrator = Arc::new(ExpansionOrchestrator::new(retrieval.clone()));
     let mut manager = ExpansionAuthManager::new();
     let grant = manager.create_grant(CreateGrantInput {
@@ -632,7 +661,10 @@ async fn passes_through_explicit_token_cap_values() {
 #[tokio::test]
 async fn injects_remaining_token_cap_when_request_omits_it() {
     let retrieval = Arc::new(MockRetrieval::default());
-    retrieval.expand_results.lock().push(default_expand_result());
+    retrieval
+        .expand_results
+        .lock()
+        .push(default_expand_result());
     let orchestrator = Arc::new(ExpansionOrchestrator::new(retrieval.clone()));
     let mut manager = ExpansionAuthManager::new();
     let grant = manager.create_grant(CreateGrantInput {
@@ -666,8 +698,14 @@ async fn injects_remaining_token_cap_when_request_omits_it() {
 #[tokio::test]
 async fn clamps_requested_token_cap_to_remaining_grant_budget() {
     let retrieval = Arc::new(MockRetrieval::default());
-    retrieval.expand_results.lock().push(default_expand_result());
-    retrieval.expand_results.lock().push(default_expand_result());
+    retrieval
+        .expand_results
+        .lock()
+        .push(default_expand_result());
+    retrieval
+        .expand_results
+        .lock()
+        .push(default_expand_result());
     {
         let mut results = retrieval.expand_results.lock();
         results[0].estimated_tokens = 700;
@@ -820,7 +858,10 @@ async fn expands_multiple_summary_ids_and_collects_cited_ids() {
 #[tokio::test]
 async fn passes_correct_arguments_to_retrieval_expand() {
     let retrieval = Arc::new(MockRetrieval::default());
-    retrieval.expand_results.lock().push(default_expand_result());
+    retrieval
+        .expand_results
+        .lock()
+        .push(default_expand_result());
     let orchestrator = ExpansionOrchestrator::new(retrieval.clone());
 
     orchestrator
@@ -897,7 +938,11 @@ async fn stops_expanding_when_budget_is_exhausted() {
 
     let result = orchestrator
         .expand(ExpansionRequest {
-            summary_ids: vec!["sum_a".to_string(), "sum_b".to_string(), "sum_c".to_string()],
+            summary_ids: vec![
+                "sum_a".to_string(),
+                "sum_b".to_string(),
+                "sum_c".to_string(),
+            ],
             conversation_id: 1,
             max_depth: None,
             token_cap: Some(500),

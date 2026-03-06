@@ -1,10 +1,13 @@
 use sieve_lcm::complete_options::{
-    build_complete_simple_options, should_omit_temperature_for_api, BuildCompleteSimpleOptionsParams,
+    BuildCompleteSimpleOptionsParams, build_complete_simple_options,
+    should_omit_temperature_for_api,
 };
 
 #[test]
 fn omits_temperature_for_openai_codex_responses() {
-    assert!(should_omit_temperature_for_api(Some("openai-codex-responses")));
+    assert!(should_omit_temperature_for_api(Some(
+        "openai-codex-responses"
+    )));
 
     let options = build_complete_simple_options(BuildCompleteSimpleOptionsParams {
         api: Some("openai-codex-responses".to_string()),

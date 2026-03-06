@@ -1,11 +1,15 @@
 use tempfile::tempdir;
 
 use sieve_lcm::cli::{
-    execute_command, parse_command, CliError, CliSuccess, QueryOutput,
+    CliCommand, CliError, CliSuccess, QueryOutput, execute_command, parse_command,
+    serialize_error_json,
 };
 
 fn run_cli(args: &[&str]) -> Result<CliSuccess, CliError> {
-    let owned = args.iter().map(|value| (*value).to_string()).collect::<Vec<_>>();
+    let owned = args
+        .iter()
+        .map(|value| (*value).to_string())
+        .collect::<Vec<_>>();
     let command = parse_command(&owned)?;
     execute_command(command)
 }
@@ -194,4 +198,127 @@ fn expand_resolves_untrusted_ref_content() {
         panic!("expected expand output")
     };
     assert_eq!(output.content, "opaque untrusted payload");
+}
+
+#[test]
+fn parse_rejects_flag_value_that_is_really_json_flag() {
+    let owned = [
+        "ingest",
+        "--db",
+        "lane.db",
+        "--role",
+        "user",
+        "--content",
+        "--json",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect::<Vec<_>>();
+
+    let error = parse_command(&owned).expect_err("expected missing value error");
+    assert!(matches!(error, CliError::Usage(_)));
+    let CliError::Usage(error) = error else {
+        unreachable!("checked above")
+    };
+    assert!(
+        error.message.contains("--content"),
+        "expected content flag in error, got: {}",
+        error.message
+    );
+    assert_eq!(
+        error.usage.as_ref().map(|usage| usage.command.as_str()),
+        Some("ingest")
+    );
+}
+
+#[test]
+fn parse_duplicate_flags_last_value_wins() {
+    let owned = [
+        "query", "--query", "first", "--query", "second", "--lane", "trusted", "--json",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect::<Vec<_>>();
+
+    let command = parse_command(&owned).expect("duplicate flags should parse");
+    let CliCommand::Query(args) = command else {
+        panic!("expected query command")
+    };
+    assert_eq!(args.query, "second");
+}
+
+#[test]
+fn invalid_command_json_error_includes_usage() {
+    let owned = ["bogus"]
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+
+    let error = parse_command(&owned).expect_err("expected invalid command");
+    let encoded = serialize_error_json(&error);
+    let payload: serde_json::Value = serde_json::from_str(&encoded).expect("valid json");
+    let message = payload["error"]["message"]
+        .as_str()
+        .expect("json error message");
+    let usage = &payload["error"]["usage"];
+
+    assert!(message.contains("unknown command `bogus`"));
+    assert_eq!(usage["command"], "sieve-lcm-cli");
+    assert_eq!(usage["syntax"], "sieve-lcm-cli [OPTIONS] <COMMAND>");
+    assert_eq!(usage["commands"].as_array().map(Vec::len), Some(3));
+}
+
+#[test]
+fn help_flags_return_usage_in_json_error_message() {
+    for args in [
+        ["--help"].as_slice(),
+        ["-h"].as_slice(),
+        ["query", "--help"].as_slice(),
+    ] {
+        let owned = args
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect::<Vec<_>>();
+        let error = parse_command(&owned).expect_err("expected help usage");
+        let encoded = serialize_error_json(&error);
+        let payload: serde_json::Value = serde_json::from_str(&encoded).expect("valid json");
+        let message = payload["error"]["message"]
+            .as_str()
+            .expect("json error message");
+        let usage = &payload["error"]["usage"];
+
+        assert_eq!(message, "help requested");
+        assert!(usage.is_object(), "missing usage for {:?}", args);
+        assert!(
+            usage["syntax"].as_str().is_some(),
+            "missing syntax for {:?}",
+            args
+        );
+    }
+}
+
+#[test]
+fn query_help_usage_lists_options_and_choices() {
+    let owned = ["query", "--help"]
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+
+    let error = parse_command(&owned).expect_err("expected help usage");
+    let encoded = serialize_error_json(&error);
+    let payload: serde_json::Value = serde_json::from_str(&encoded).expect("valid json");
+    let usage = &payload["error"]["usage"];
+    let options = usage["options"].as_array().expect("usage options array");
+
+    assert_eq!(usage["command"], "query");
+    assert_eq!(usage["syntax"], "sieve-lcm-cli query [OPTIONS]");
+    assert!(
+        options
+            .iter()
+            .any(|option| option["flags"] == serde_json::json!(["--query"]))
+    );
+    assert!(options.iter().any(|option| {
+        option["flags"] == serde_json::json!(["--lane"])
+            && option["choices"] == serde_json::json!(["trusted", "untrusted", "both"])
+    }));
 }

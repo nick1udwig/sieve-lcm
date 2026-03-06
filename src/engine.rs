@@ -257,7 +257,8 @@ impl LcmContextEngine {
         let conversation_store = ConversationStore::new(&shared);
         let summary_store = SummaryStore::new(&shared);
 
-        let mut assembler = ContextAssembler::new(conversation_store.clone(), summary_store.clone());
+        let mut assembler =
+            ContextAssembler::new(conversation_store.clone(), summary_store.clone());
         assembler.set_timezone(Some(config.timezone.clone()));
 
         let compaction = CompactionEngine::new(
@@ -278,8 +279,10 @@ impl LcmContextEngine {
             },
         );
 
-        let retrieval: Arc<dyn RetrievalApi> =
-            Arc::new(RetrievalEngine::new(conversation_store.clone(), summary_store.clone()));
+        let retrieval: Arc<dyn RetrievalApi> = Arc::new(RetrievalEngine::new(
+            conversation_store.clone(),
+            summary_store.clone(),
+        ));
 
         Ok(Self {
             info: default_info(),
@@ -326,10 +329,15 @@ impl LcmContextEngine {
         value.filter(|value| *value > 0)
     }
 
-    fn resolve_token_budget(token_budget: Option<i64>, legacy: Option<&LegacyCompactionParams>) -> Option<i64> {
-        token_budget
-            .filter(|value| *value > 0)
-            .or_else(|| legacy.and_then(|legacy| legacy.token_budget).filter(|value| *value > 0))
+    fn resolve_token_budget(
+        token_budget: Option<i64>,
+        legacy: Option<&LegacyCompactionParams>,
+    ) -> Option<i64> {
+        token_budget.filter(|value| *value > 0).or_else(|| {
+            legacy
+                .and_then(|legacy| legacy.token_budget)
+                .filter(|value| *value > 0)
+        })
     }
 
     async fn resolve_summarize(
@@ -397,10 +405,8 @@ impl LcmContextEngine {
                 "file_{}",
                 Uuid::new_v4().simple().to_string()[..16].to_lowercase()
             );
-            let extension = extension_from_name_or_mime(
-                block.file_name.as_deref(),
-                block.mime_type.as_deref(),
-            );
+            let extension =
+                extension_from_name_or_mime(block.file_name.as_deref(), block.mime_type.as_deref());
             let storage_uri =
                 store_large_file_content(conversation_id, &file_id, &extension, &block.text)?;
             let byte_size = block.text.as_bytes().len() as i64;
@@ -411,15 +417,17 @@ impl LcmContextEngine {
                 summarize_text: None,
             });
 
-            runtime.summary_store.insert_large_file(CreateLargeFileInput {
-                file_id: file_id.clone(),
-                conversation_id,
-                file_name: block.file_name.clone(),
-                mime_type: block.mime_type.clone(),
-                byte_size: Some(byte_size),
-                storage_uri,
-                exploration_summary: Some(exploration_summary.clone()),
-            })?;
+            runtime
+                .summary_store
+                .insert_large_file(CreateLargeFileInput {
+                    file_id: file_id.clone(),
+                    conversation_id,
+                    file_name: block.file_name.clone(),
+                    mime_type: block.mime_type.clone(),
+                    byte_size: Some(byte_size),
+                    storage_uri,
+                    exploration_summary: Some(exploration_summary.clone()),
+                })?;
 
             rewritten_segments.push(content[cursor..block.start].to_string());
             rewritten_segments.push(format_file_reference(
@@ -466,13 +474,15 @@ impl LcmContextEngine {
         }
 
         let seq = runtime.conversation_store.get_max_seq(conversation_id)? + 1;
-        let message_record = runtime.conversation_store.create_message(CreateMessageInput {
-            conversation_id,
-            seq,
-            role: stored.role,
-            content: stored.content.clone(),
-            token_count: stored.token_count,
-        })?;
+        let message_record = runtime
+            .conversation_store
+            .create_message(CreateMessageInput {
+                conversation_id,
+                seq,
+                role: stored.role,
+                content: stored.content.clone(),
+                token_count: stored.token_count,
+            })?;
 
         let parts = build_message_parts(&input.session_id, &message_for_parts, &stored.content);
         runtime
@@ -499,7 +509,10 @@ impl LcmContextEngine {
         }
 
         let runtime = self.runtime()?;
-        let Some(latest_db_message) = runtime.conversation_store.get_last_message(conversation_id)? else {
+        let Some(latest_db_message) = runtime
+            .conversation_store
+            .get_last_message(conversation_id)?
+        else {
             return Ok(ReconcileSessionTailResult {
                 imported_messages: 0,
                 has_overlap: false,
@@ -513,8 +526,11 @@ impl LcmContextEngine {
 
         let latest_historical = stored_historical_messages.last().cloned();
         if let Some(latest_historical) = latest_historical {
-            let latest_identity = message_identity(&latest_db_message.role, &latest_db_message.content);
-            if latest_identity == message_identity(&latest_historical.role, &latest_historical.content) {
+            let latest_identity =
+                message_identity(&latest_db_message.role, &latest_db_message.content);
+            if latest_identity
+                == message_identity(&latest_historical.role, &latest_historical.content)
+            {
                 let db_occurrences = runtime.conversation_store.count_messages_by_identity(
                     conversation_id,
                     latest_db_message.role.clone(),
@@ -889,9 +905,12 @@ impl LcmContextEngine {
             });
         }
 
-        let has_summary_items = context_items
-            .iter()
-            .any(|item| matches!(item.item_type, crate::store::summary_store::ContextItemType::Summary));
+        let has_summary_items = context_items.iter().any(|item| {
+            matches!(
+                item.item_type,
+                crate::store::summary_store::ContextItemType::Summary
+            )
+        });
         if !has_summary_items && context_items.len() < input.messages.len() {
             return Ok(AssembleResult {
                 messages: input.messages,
@@ -900,7 +919,10 @@ impl LcmContextEngine {
             });
         }
 
-        let token_budget = input.token_budget.filter(|value| *value > 0).unwrap_or(128_000);
+        let token_budget = input
+            .token_budget
+            .filter(|value| *value > 0)
+            .unwrap_or(128_000);
         match runtime
             .assembler
             .assemble(AssembleContextInput {
@@ -937,7 +959,10 @@ impl LcmContextEngine {
         self.assemble(input).await
     }
 
-    pub async fn evaluate_leaf_trigger(&self, session_id: &str) -> anyhow::Result<LeafTriggerDecision> {
+    pub async fn evaluate_leaf_trigger(
+        &self,
+        session_id: &str,
+    ) -> anyhow::Result<LeafTriggerDecision> {
         self.ensure_migrated()?;
         let runtime = self.runtime()?;
 
@@ -958,7 +983,10 @@ impl LcmContextEngine {
             .await
     }
 
-    pub async fn compact_leaf_async(&self, input: CompactLeafInput) -> anyhow::Result<CompactResult> {
+    pub async fn compact_leaf_async(
+        &self,
+        input: CompactLeafInput,
+    ) -> anyhow::Result<CompactResult> {
         self.ensure_migrated()?;
         let runtime = self.runtime()?;
 
@@ -974,7 +1002,8 @@ impl LcmContextEngine {
             });
         };
 
-        let token_budget = Self::resolve_token_budget(input.token_budget, input.legacy_params.as_ref());
+        let token_budget =
+            Self::resolve_token_budget(input.token_budget, input.legacy_params.as_ref());
         let Some(token_budget) = token_budget else {
             return Ok(CompactResult {
                 ok: false,
@@ -984,11 +1013,13 @@ impl LcmContextEngine {
             });
         };
 
-        let observed_tokens = Self::normalize_observed_token_count(
-            input
-                .current_token_count
-                .or_else(|| input.legacy_params.as_ref().and_then(|params| params.current_token_count)),
-        );
+        let observed_tokens =
+            Self::normalize_observed_token_count(input.current_token_count.or_else(|| {
+                input
+                    .legacy_params
+                    .as_ref()
+                    .and_then(|params| params.current_token_count)
+            }));
         let summarize = self
             .resolve_summarize(input.legacy_params.as_ref(), input.custom_instructions)
             .await;
@@ -1041,7 +1072,8 @@ impl LcmContextEngine {
             });
         };
 
-        let token_budget = Self::resolve_token_budget(input.token_budget, input.legacy_params.as_ref());
+        let token_budget =
+            Self::resolve_token_budget(input.token_budget, input.legacy_params.as_ref());
         let Some(token_budget) = token_budget else {
             return Ok(CompactResult {
                 ok: false,
@@ -1058,11 +1090,13 @@ impl LcmContextEngine {
             .unwrap_or(false);
         let force_compaction = input.force.unwrap_or(false) || manual_compaction_requested;
 
-        let observed_tokens = Self::normalize_observed_token_count(
-            input
-                .current_token_count
-                .or_else(|| input.legacy_params.as_ref().and_then(|params| params.current_token_count)),
-        );
+        let observed_tokens =
+            Self::normalize_observed_token_count(input.current_token_count.or_else(|| {
+                input
+                    .legacy_params
+                    .as_ref()
+                    .and_then(|params| params.current_token_count)
+            }));
 
         let summarize = self
             .resolve_summarize(input.legacy_params.as_ref(), input.custom_instructions)
@@ -1117,7 +1151,10 @@ impl LcmContextEngine {
                     tokens_after: Some(sweep_result.tokens_after),
                     details: Some(CompactOutcomeDetails {
                         rounds: if sweep_result.action_taken { 1 } else { 0 },
-                        target_tokens: if matches!(input.compaction_target, Some(CompactionTarget::Threshold)) {
+                        target_tokens: if matches!(
+                            input.compaction_target,
+                            Some(CompactionTarget::Threshold)
+                        ) {
                             decision.threshold
                         } else {
                             token_budget
@@ -1186,7 +1223,9 @@ impl LcmContextEngine {
 
     fn prune_heartbeat_ok_turns(&self, conversation_id: i64) -> anyhow::Result<i64> {
         let runtime = self.runtime()?;
-        let all_messages = runtime.conversation_store.get_messages(conversation_id, None, None)?;
+        let all_messages = runtime
+            .conversation_store
+            .get_messages(conversation_id, None, None)?;
         if all_messages.is_empty() {
             return Ok(0);
         }
@@ -1352,7 +1391,12 @@ fn estimate_content_tokens_for_role(role: &str, content: &Value, fallback_conten
 
     if content.is_object() {
         if role == "user" && is_text_block(content) {
-            return estimate_tokens(content.get("text").and_then(Value::as_str).unwrap_or_default());
+            return estimate_tokens(
+                content
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            );
         }
         return estimate_tokens(&serde_json::to_string(&vec![content]).unwrap_or_default());
     }
@@ -1404,9 +1448,7 @@ fn to_part_type(raw_type: &str) -> MessagePartType {
     match raw_type {
         "text" => MessagePartType::Text,
         "thinking" | "reasoning" => MessagePartType::Reasoning,
-        "tool_use" | "tool-use" | "tool_result" | "toolResult" | "tool" => {
-            MessagePartType::Tool
-        }
+        "tool_use" | "tool-use" | "tool_result" | "toolResult" | "tool" => MessagePartType::Tool,
         "patch" => MessagePartType::Patch,
         "file" | "image" => MessagePartType::File,
         "subtask" => MessagePartType::Subtask,
@@ -1447,10 +1489,12 @@ fn build_message_parts(
             tool_name: None,
             tool_input: None,
             tool_output: None,
-            metadata: Some(json!({
-                "originalRole": role,
-            })
-            .to_string()),
+            metadata: Some(
+                json!({
+                    "originalRole": role,
+                })
+                .to_string(),
+            ),
         }];
     }
 
@@ -1596,7 +1640,10 @@ fn read_leaf_path_messages(session_file: &str) -> Vec<AgentMessage> {
     if trimmed.starts_with('[') {
         if let Ok(parsed) = serde_json::from_str::<Value>(trimmed) {
             if let Some(items) = parsed.as_array() {
-                return items.iter().filter_map(value_to_bootstrap_message).collect();
+                return items
+                    .iter()
+                    .filter_map(value_to_bootstrap_message)
+                    .collect();
             }
         }
         return Vec::new();

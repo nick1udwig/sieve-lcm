@@ -1,8 +1,8 @@
 use sieve_lcm::expansion_policy::{
-    classify_expansion_token_risk, decide_lcm_expansion_routing, detect_broad_time_range_indicator,
-    detect_multi_hop_indicator, estimate_expansion_tokens, LcmExpansionRoutingAction,
-    LcmExpansionRoutingInput, LcmExpansionRoutingIntent, LcmExpansionTokenRiskLevel,
-    EXPANSION_ROUTING_THRESHOLDS,
+    EXPANSION_ROUTING_THRESHOLDS, LcmExpansionRoutingAction, LcmExpansionRoutingInput,
+    LcmExpansionRoutingIntent, LcmExpansionTokenRiskLevel, classify_expansion_token_risk,
+    decide_lcm_expansion_routing, detect_broad_time_range_indicator, detect_multi_hop_indicator,
+    estimate_expansion_tokens,
 };
 
 #[test]
@@ -82,7 +82,9 @@ fn applies_the_expected_route_vs_delegate_decision_matrix() {
             "query probe with broad range and multi-hop indicators",
             LcmExpansionRoutingInput {
                 intent: LcmExpansionRoutingIntent::QueryProbe,
-                query: Some("build timeline from 2021 to 2025 and explain root cause chain".to_string()),
+                query: Some(
+                    "build timeline from 2021 to 2025 and explain root cause chain".to_string(),
+                ),
                 candidate_summary_count: 2,
                 requested_max_depth: Some(2),
                 token_cap: 10_000,
@@ -255,14 +257,21 @@ fn delegates_for_combined_broad_time_range_and_multi_hop_indicators() {
         token_cap: 10_000,
         include_messages: false,
     });
-    assert_eq!(decision.action, LcmExpansionRoutingAction::DelegateTraversal);
+    assert_eq!(
+        decision.action,
+        LcmExpansionRoutingAction::DelegateTraversal
+    );
     assert!(decision.triggers.delegate_by_broad_time_range_and_multi_hop);
 }
 
 #[test]
 fn detects_broad_time_range_year_windows_of_at_least_two_years() {
-    assert!(detect_broad_time_range_indicator(Some("events from 2022 to 2024")));
-    assert!(!detect_broad_time_range_indicator(Some("events from 2024 to 2025")));
+    assert!(detect_broad_time_range_indicator(Some(
+        "events from 2022 to 2024"
+    )));
+    assert!(!detect_broad_time_range_indicator(Some(
+        "events from 2024 to 2025"
+    )));
 }
 
 #[test]

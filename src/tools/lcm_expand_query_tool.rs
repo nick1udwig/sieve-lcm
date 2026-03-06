@@ -1,20 +1,23 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::engine::LcmContextEngineApi;
-use crate::expansion_auth::{create_delegated_expansion_grant, revoke_delegated_expansion_grant_for_session, CreateDelegatedExpansionGrantInput};
+use crate::expansion_auth::{
+    CreateDelegatedExpansionGrantInput, create_delegated_expansion_grant,
+    revoke_delegated_expansion_grant_for_session,
+};
 use crate::tools::common::{ToolResult, json_result};
 use crate::tools::lcm_conversation_scope::resolve_lcm_conversation_scope;
 use crate::tools::lcm_expand_tool_delegation::{
     normalize_summary_ids, resolve_requester_conversation_scope_id,
 };
 use crate::tools::lcm_expansion_recursion_guard::{
-    clear_delegated_expansion_context, evaluate_expansion_recursion_guard,
+    TelemetryEvent, clear_delegated_expansion_context, evaluate_expansion_recursion_guard,
     record_expansion_delegation_telemetry, resolve_expansion_request_id,
-    resolve_next_expansion_depth, stamp_delegated_expansion_context, TelemetryEvent,
+    resolve_next_expansion_depth, stamp_delegated_expansion_context,
 };
 use crate::types::{GatewayCallRequest, LcmDependencies};
 
@@ -672,11 +675,5 @@ pub fn create_lcm_expand_query_tool(
     requester_session_key: Option<String>,
     session_key: Option<String>,
 ) -> LcmExpandQueryTool {
-    LcmExpandQueryTool::new(
-        deps,
-        lcm,
-        session_id,
-        requester_session_key,
-        session_key,
-    )
+    LcmExpandQueryTool::new(deps, lcm, session_id, requester_session_key, session_key)
 }

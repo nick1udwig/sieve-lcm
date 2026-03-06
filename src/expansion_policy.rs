@@ -97,18 +97,16 @@ pub const EXPANSION_ROUTING_THRESHOLDS: ExpansionRoutingThresholds = ExpansionRo
 
 fn normalize_depth(requested_max_depth: Option<i64>) -> i64 {
     match requested_max_depth {
-        Some(value) => value
-            .clamp(EXPANSION_ROUTING_THRESHOLDS.min_depth, EXPANSION_ROUTING_THRESHOLDS.max_depth),
+        Some(value) => value.clamp(
+            EXPANSION_ROUTING_THRESHOLDS.min_depth,
+            EXPANSION_ROUTING_THRESHOLDS.max_depth,
+        ),
         None => EXPANSION_ROUTING_THRESHOLDS.default_depth,
     }
 }
 
 fn normalize_token_cap(token_cap: i64) -> i64 {
-    if token_cap <= 0 {
-        1
-    } else {
-        token_cap
-    }
+    if token_cap <= 0 { 1 } else { token_cap }
 }
 
 pub fn detect_broad_time_range_indicator(query: Option<&str>) -> bool {
@@ -218,7 +216,9 @@ pub fn classify_expansion_token_risk(
     (ratio, LcmExpansionTokenRiskLevel::Low)
 }
 
-pub fn decide_lcm_expansion_routing(input: LcmExpansionRoutingInput) -> LcmExpansionRoutingDecision {
+pub fn decide_lcm_expansion_routing(
+    input: LcmExpansionRoutingInput,
+) -> LcmExpansionRoutingDecision {
     let normalized_max_depth = normalize_depth(input.requested_max_depth);
     let candidate_summary_count = input.candidate_summary_count.max(0);
     let token_cap = normalize_token_cap(input.token_cap);
@@ -239,13 +239,14 @@ pub fn decide_lcm_expansion_routing(input: LcmExpansionRoutingInput) -> LcmExpan
         classify_expansion_token_risk(estimated_tokens, token_cap);
 
     let direct_by_no_candidates = candidate_summary_count == 0;
-    let direct_by_low_complexity_probe = matches!(input.intent, LcmExpansionRoutingIntent::QueryProbe)
-        && !direct_by_no_candidates
-        && normalized_max_depth <= EXPANSION_ROUTING_THRESHOLDS.direct_max_depth
-        && candidate_summary_count <= EXPANSION_ROUTING_THRESHOLDS.direct_max_candidates
-        && matches!(token_risk_level, LcmExpansionTokenRiskLevel::Low)
-        && !broad_time_range
-        && !multi_hop_retrieval;
+    let direct_by_low_complexity_probe =
+        matches!(input.intent, LcmExpansionRoutingIntent::QueryProbe)
+            && !direct_by_no_candidates
+            && normalized_max_depth <= EXPANSION_ROUTING_THRESHOLDS.direct_max_depth
+            && candidate_summary_count <= EXPANSION_ROUTING_THRESHOLDS.direct_max_candidates
+            && matches!(token_risk_level, LcmExpansionTokenRiskLevel::Low)
+            && !broad_time_range
+            && !multi_hop_retrieval;
 
     let delegate_by_depth = false;
     let delegate_by_candidate_count = false;
@@ -269,7 +270,8 @@ pub fn decide_lcm_expansion_routing(input: LcmExpansionRoutingInput) -> LcmExpan
         reasons.push("No candidate summary IDs are available.".to_string());
     }
     if direct_by_low_complexity_probe {
-        reasons.push("Query probe is low complexity and below retrieval-risk thresholds.".to_string());
+        reasons
+            .push("Query probe is low complexity and below retrieval-risk thresholds.".to_string());
     }
     if delegate_by_token_risk {
         reasons.push(format!(
@@ -278,7 +280,9 @@ pub fn decide_lcm_expansion_routing(input: LcmExpansionRoutingInput) -> LcmExpan
         ));
     }
     if delegate_by_broad_time_range_and_multi_hop {
-        reasons.push("Broad time-range request combined with multi-hop retrieval indicators.".to_string());
+        reasons.push(
+            "Broad time-range request combined with multi-hop retrieval indicators.".to_string(),
+        );
     }
     if matches!(action, LcmExpansionRoutingAction::ExpandShallow) {
         reasons.push("Complexity is bounded; use direct/shallow expansion.".to_string());

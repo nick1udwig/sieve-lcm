@@ -1,5 +1,5 @@
-use std::future::Future;
 use std::fs;
+use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -22,11 +22,15 @@ use sieve_lcm::large_files::{
     ExplorationSummaryInput, extension_from_name_or_mime, format_file_reference,
     generate_exploration_summary, is_large_file, parse_file_blocks,
 };
-use sieve_lcm::retrieval::{DescribeResult, ExpandInput, ExpandResult, GrepInput, GrepResult, RetrievalApi};
+use sieve_lcm::retrieval::{
+    DescribeResult, ExpandInput, ExpandResult, GrepInput, GrepResult, RetrievalApi,
+};
 use sieve_lcm::store::conversation_store::{
     ConversationStore, CreateMessageInput, CreateMessagePartInput, MessagePartType, MessageRole,
 };
-use sieve_lcm::store::summary_store::{CreateLargeFileInput, CreateSummaryInput, SummaryKind, SummaryStore};
+use sieve_lcm::store::summary_store::{
+    CreateLargeFileInput, CreateSummaryInput, SummaryKind, SummaryStore,
+};
 use sieve_lcm::summarize::LcmSummarizeFn;
 use sieve_lcm::types::{
     AgentMessage, CompletionRequest, CompletionResult, GatewayCallRequest, LcmDependencies,
@@ -244,7 +248,9 @@ fn extract_ingest_content(value: &Value) -> String {
                 if kind != "text" {
                     return None;
                 }
-                item.get("text").and_then(Value::as_str).map(ToString::to_string)
+                item.get("text")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string)
             })
             .collect::<Vec<String>>();
         return if lines.is_empty() {
@@ -290,7 +296,10 @@ fn estimate_assembled_payload_tokens(messages: &[AgentMessage]) -> i64 {
 
 fn summarize_stub() -> LcmSummarizeFn {
     Arc::new(
-        |text: String, _aggressive: bool, _options| -> Pin<Box<dyn Future<Output = String> + Send>> {
+        |text: String,
+         _aggressive: bool,
+         _options|
+         -> Pin<Box<dyn Future<Output = String> + Send>> {
             let short = text.chars().take(120).collect::<String>();
             Box::pin(async move { format!("summary output: {short}") })
         },
@@ -420,7 +429,8 @@ impl EngineHarness {
         if let Some(items) = message.content.as_array() {
             for (ordinal, item) in items.iter().enumerate() {
                 let kind = item.get("type").and_then(Value::as_str).unwrap_or_default();
-                let is_toolish = matches!(kind, "tool_result" | "toolCall" | "toolUse" | "tool_use");
+                let is_toolish =
+                    matches!(kind, "tool_result" | "toolCall" | "toolUse" | "tool_use");
                 let tool_call_id = message
                     .tool_call_id
                     .clone()
@@ -440,7 +450,11 @@ impl EngineHarness {
                             .and_then(Value::as_str)
                             .map(ToString::to_string)
                     })
-                    .or_else(|| item.get("id").and_then(Value::as_str).map(ToString::to_string));
+                    .or_else(|| {
+                        item.get("id")
+                            .and_then(Value::as_str)
+                            .map(ToString::to_string)
+                    });
                 parts.push(CreateMessagePartInput {
                     session_id: session_id.to_string(),
                     part_type: if is_toolish {
@@ -570,15 +584,19 @@ impl EngineHarness {
             token_count,
         })?;
         let parts = self.build_message_parts(session_id, &message, &stored_content);
-        self.conv_store.create_message_parts(row.message_id, &parts)?;
+        self.conv_store
+            .create_message_parts(row.message_id, &parts)?;
         self.sum_store
             .append_context_message(conversation_id, row.message_id)?;
         Ok(())
     }
 
     async fn ingest_text(&self, session_id: &str, role: &str, content: &str) -> anyhow::Result<()> {
-        self.ingest(session_id, make_message(Some(role), Value::String(content.to_string())))
-            .await
+        self.ingest(
+            session_id,
+            make_message(Some(role), Value::String(content.to_string())),
+        )
+        .await
     }
 
     async fn assemble_with_live_fallback(
@@ -593,7 +611,10 @@ impl EngineHarness {
         let Some(conversation) = conversation else {
             return (live_messages, 0, None);
         };
-        let Ok(stored_count) = self.conv_store.get_message_count(conversation.conversation_id) else {
+        let Ok(stored_count) = self
+            .conv_store
+            .get_message_count(conversation.conversation_id)
+        else {
             return (live_messages, 0, None);
         };
         if stored_count < live_messages.len() as i64 {
@@ -913,9 +934,12 @@ async fn ingest_intercepts_oversized_file_blocks_and_persists_large_file_metadat
     let session_id = Uuid::new_v4().to_string();
     let file_text = format!("{}closing notes", "line about architecture\n".repeat(160));
     let content = format!(r#"<file name="lcm-paper.md" mime="text/markdown">{file_text}</file>"#);
-    h.ingest(&session_id, make_message(Some("user"), Value::String(content)))
-        .await
-        .expect("ingest");
+    h.ingest(
+        &session_id,
+        make_message(Some("user"), Value::String(content)),
+    )
+    .await
+    .expect("ingest");
 
     let conversation = h
         .conv_store
@@ -943,9 +967,10 @@ async fn ingest_intercepts_oversized_file_blocks_and_persists_large_file_metadat
         .expect("file exists");
     assert_eq!(stored_file.file_name.as_deref(), Some("lcm-paper.md"));
     assert_eq!(stored_file.mime_type.as_deref(), Some("text/markdown"));
-    assert!(stored_file
-        .storage_uri
-        .contains(&format!(".openclaw/lcm-files/{}/", conversation.conversation_id)));
+    assert!(stored_file.storage_uri.contains(&format!(
+        ".openclaw/lcm-files/{}/",
+        conversation.conversation_id
+    )));
     let written = std::fs::read_to_string(&stored_file.storage_uri).expect("read file");
     assert_eq!(written, file_text);
 
@@ -1072,7 +1097,9 @@ async fn assemble_falls_back_when_db_context_trails_live_context() {
         ),
         make_message(Some("user"), Value::String("live message 3".to_string())),
     ];
-    let (messages, estimated_tokens, _) = h.assemble_with_live_fallback(session_id, live.clone(), 256).await;
+    let (messages, estimated_tokens, _) = h
+        .assemble_with_live_fallback(session_id, live.clone(), 256)
+        .await;
     assert_eq!(messages, live);
     assert_eq!(estimated_tokens, 0);
 }
@@ -1098,7 +1125,10 @@ async fn assemble_uses_db_context_when_coverage_exists() {
     assert_ne!(messages, live);
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].role, "user");
-    assert_eq!(messages[0].content, Value::String("persisted message one".to_string()));
+    assert_eq!(
+        messages[0].content,
+        Value::String("persisted message one".to_string())
+    );
     assert_eq!(messages[1].role, "assistant");
     assert!(estimated_tokens > 0);
 }
@@ -1108,13 +1138,9 @@ async fn assemble_respects_token_budget_in_output() {
     let h = EngineHarness::new();
     let session_id = "session-budget";
     for i in 0..12 {
-        h.ingest_text(
-            session_id,
-            "user",
-            &format!("turn {i} {}", "x".repeat(396)),
-        )
-        .await
-        .expect("ingest");
+        h.ingest_text(session_id, "user", &format!("turn {i} {}", "x".repeat(396)))
+            .await
+            .expect("ingest");
     }
 
     let (messages, _estimated_tokens, _) = h
@@ -1321,9 +1347,7 @@ async fn assemble_emphasizes_expand_before_asserting_when_summaries_are_deeply_c
     assert!(prompt_addition.contains("2) `lcm_expand_query` with a focused prompt"));
     assert!(prompt_addition.contains("3) Answer with citations to summary IDs used"));
     assert!(prompt_addition.contains("Uncertainty checklist"));
-    assert!(prompt_addition.contains(
-        "Am I making exact factual claims from a condensed summary?"
-    ));
+    assert!(prompt_addition.contains("Am I making exact factual claims from a condensed summary?"));
     assert!(prompt_addition.contains("Could compaction have omitted a crucial detail?"));
     assert!(prompt_addition.contains("Do not guess"));
     assert!(prompt_addition.contains("Expand first or state that you need to expand"));
@@ -1398,7 +1422,9 @@ async fn fidelity_preserves_structured_toolresult_content_via_message_parts_and_
         }]),
     );
     tool_result.tool_call_id = Some("call_123".to_string());
-    h.ingest(&session_id, tool_result).await.expect("tool ingest");
+    h.ingest(&session_id, tool_result)
+        .await
+        .expect("tool ingest");
 
     let conversation = h
         .conv_store
@@ -1432,7 +1458,10 @@ async fn fidelity_preserves_structured_toolresult_content_via_message_parts_and_
     assert_eq!(assembled.messages.len(), 2);
     assert_eq!(assembled.messages[0].role, "assistant");
     assert_eq!(assembled.messages[1].role, "toolResult");
-    assert_eq!(assembled.messages[1].tool_call_id.as_deref(), Some("call_123"));
+    assert_eq!(
+        assembled.messages[1].tool_call_id.as_deref(),
+        Some("call_123")
+    );
     assert!(assembled.messages[1].content.is_array());
     assert_eq!(
         assembled.messages[1]
@@ -1478,14 +1507,7 @@ async fn compact_uses_explicit_token_budget_over_legacy_token_budget() {
         .await
         .expect("ingest");
     let (ok, compacted, reason, trace) = h
-        .compact_like_engine(
-            "budget-session",
-            Some(123),
-            Some(999),
-            false,
-            false,
-            None,
-        )
+        .compact_like_engine("budget-session", Some(123), Some(999), false, false, None)
         .await;
     assert!(ok);
     assert!(!compacted);
@@ -1504,14 +1526,7 @@ async fn compact_fails_when_token_budget_is_missing() {
         .await
         .expect("ingest");
     let (ok, compacted, reason, _trace) = h
-        .compact_like_engine(
-            "session-missing-budget",
-            None,
-            None,
-            false,
-            false,
-            None,
-        )
+        .compact_like_engine("session-missing-budget", None, None, false, false, None)
         .await;
     assert!(!ok);
     assert!(!compacted);
@@ -1685,7 +1700,10 @@ async fn bootstrap_imports_only_active_leaf_path_messages_from_session_manager_c
     let session_file = h.write_session_file(
         "branched",
         &[
-            make_message(Some("user"), json!([{ "type": "text", "text": "root user" }])),
+            make_message(
+                Some("user"),
+                json!([{ "type": "text", "text": "root user" }]),
+            ),
             make_message(
                 Some("assistant"),
                 json!([{ "type": "text", "text": "abandoned assistant" }]),
@@ -1724,7 +1742,10 @@ async fn bootstrap_imports_only_active_leaf_path_messages_from_session_manager_c
         .expect("messages");
     assert_eq!(stored.len(), 4);
     assert_eq!(
-        stored.iter().map(|message| message.content.clone()).collect::<Vec<String>>(),
+        stored
+            .iter()
+            .map(|message| message.content.clone())
+            .collect::<Vec<String>>(),
         vec![
             "root user".to_string(),
             "abandoned assistant".to_string(),
@@ -1753,7 +1774,10 @@ async fn bootstrap_is_idempotent_and_does_not_duplicate_sessions() {
         "idempotent",
         &[
             make_message(Some("user"), json!([{ "type": "text", "text": "first" }])),
-            make_message(Some("assistant"), json!([{ "type": "text", "text": "second" }])),
+            make_message(
+                Some("assistant"),
+                json!([{ "type": "text", "text": "second" }]),
+            ),
         ],
     );
 
@@ -1797,7 +1821,10 @@ async fn bootstrap_reconciles_missing_tail_messages_when_jsonl_advances() {
     let session_id = "bootstrap-reconcile-tail";
 
     let initial_messages = vec![
-        make_message(Some("user"), json!([{ "type": "text", "text": "seed user" }])),
+        make_message(
+            Some("user"),
+            json!([{ "type": "text", "text": "seed user" }]),
+        ),
         make_message(
             Some("assistant"),
             json!([{ "type": "text", "text": "seed assistant" }]),
@@ -1850,7 +1877,10 @@ async fn bootstrap_reconciles_missing_tail_messages_when_jsonl_advances() {
         .get_messages(conversation.conversation_id, None, None)
         .expect("messages");
     assert_eq!(
-        stored.iter().map(|message| message.content.clone()).collect::<Vec<String>>(),
+        stored
+            .iter()
+            .map(|message| message.content.clone())
+            .collect::<Vec<String>>(),
         vec![
             "seed user".to_string(),
             "seed assistant".to_string(),
@@ -1873,7 +1903,10 @@ async fn bootstrap_reconciles_missing_structured_tool_call_tail() {
     existing_tool_result.tool_call_id = Some("call_existing".to_string());
 
     let initial_messages = vec![
-        make_message(Some("user"), json!([{ "type": "text", "text": "seed user" }])),
+        make_message(
+            Some("user"),
+            json!([{ "type": "text", "text": "seed user" }]),
+        ),
         make_message(
             Some("assistant"),
             json!([{ "type": "text", "text": "seed assistant" }]),
@@ -1970,7 +2003,10 @@ async fn bootstrap_does_not_append_without_overlap_anchor() {
     engine
         .ingest(IngestInput {
             session_id: session_id.to_string(),
-            message: make_message(Some("assistant"), Value::String("db only assistant".to_string())),
+            message: make_message(
+                Some("assistant"),
+                Value::String("db only assistant".to_string()),
+            ),
             is_heartbeat: None,
         })
         .await
@@ -1985,7 +2021,10 @@ async fn bootstrap_does_not_append_without_overlap_anchor() {
         .expect("bootstrap");
     assert!(!result.bootstrapped);
     assert_eq!(result.imported_messages, 0);
-    assert_eq!(result.reason.as_deref(), Some("conversation already has messages"));
+    assert_eq!(
+        result.reason.as_deref(),
+        Some("conversation already has messages")
+    );
 
     let conversation = h
         .conv_store
@@ -1997,7 +2036,10 @@ async fn bootstrap_does_not_append_without_overlap_anchor() {
         .get_messages(conversation.conversation_id, None, None)
         .expect("messages");
     assert_eq!(
-        stored.iter().map(|message| message.content.clone()).collect::<Vec<String>>(),
+        stored
+            .iter()
+            .map(|message| message.content.clone())
+            .collect::<Vec<String>>(),
         vec!["db only user".to_string(), "db only assistant".to_string()]
     );
 }
@@ -2010,8 +2052,14 @@ async fn bootstrap_uses_bulk_import_path_for_initial_bootstrap() {
     let session_file = h.write_session_file(
         "bulk",
         &[
-            make_message(Some("user"), json!([{ "type": "text", "text": "bulk one" }])),
-            make_message(Some("assistant"), json!([{ "type": "text", "text": "bulk two" }])),
+            make_message(
+                Some("user"),
+                json!([{ "type": "text", "text": "bulk one" }]),
+            ),
+            make_message(
+                Some("assistant"),
+                json!([{ "type": "text", "text": "bulk two" }]),
+            ),
         ],
     );
 
@@ -2024,7 +2072,9 @@ async fn bootstrap_uses_bulk_import_path_for_initial_bootstrap() {
         .expect("bootstrap");
     assert!(result.bootstrapped);
     let bulk_spy_calls = vec![SpyCall {
-        args: vec![Some(json!({ "importedMessages": result.imported_messages }))],
+        args: vec![Some(
+            json!({ "importedMessages": result.imported_messages }),
+        )],
     }];
     assert_eq!(bulk_spy_calls.len(), 1);
     let single_spy_calls: Vec<SpyCall<Option<Value>>> = vec![];
@@ -2188,7 +2238,10 @@ async fn after_turn_ingests_auto_compaction_summary_and_new_turn_messages() {
         .get_messages(conversation.conversation_id, None, None)
         .expect("messages");
     assert_eq!(
-        stored.iter().map(|message| message.content.clone()).collect::<Vec<String>>(),
+        stored
+            .iter()
+            .map(|message| message.content.clone())
+            .collect::<Vec<String>>(),
         vec![
             "[summary] compacted older history".to_string(),
             "new assistant reply".to_string(),
@@ -2240,12 +2293,17 @@ async fn after_turn_runs_proactive_threshold_compaction_with_token_budget() {
     let compact_leaf_async_spy_calls: Vec<SpyCall<Option<Value>>> = vec![];
     assert_eq!(compact_leaf_async_spy_calls.len(), 0);
     let compact_spy_calls = vec![SpyCall {
-        args: vec![Some("expect.objectContaining({sessionId,tokenBudget:4096,compactionTarget:\"threshold\",})".to_string())],
+        args: vec![Some(
+            "expect.objectContaining({sessionId,tokenBudget:4096,compactionTarget:\"threshold\",})"
+                .to_string(),
+        )],
     }];
     assert!(compact_spy_calls.len() >= 1);
     assert_eq!(
         compact_spy_calls[0].args[0],
-        Some("expect.objectContaining({sessionId,tokenBudget:4096,compactionTarget:\"threshold\",})".to_string())
+        Some(
+            "expect.objectContaining({sessionId,tokenBudget:4096,compactionTarget:\"threshold\",})"
+                .to_string()
+        )
     );
-
 }

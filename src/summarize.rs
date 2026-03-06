@@ -261,7 +261,9 @@ fn sanitize_for_diagnostics(value: &Value, depth: usize) -> Value {
             if map.len() > DIAGNOSTIC_MAX_OBJECT_KEYS {
                 out.insert(
                     "__truncated_keys__".to_string(),
-                    Value::Number(Number::from((map.len() - DIAGNOSTIC_MAX_OBJECT_KEYS) as u64)),
+                    Value::Number(Number::from(
+                        (map.len() - DIAGNOSTIC_MAX_OBJECT_KEYS) as u64,
+                    )),
                 );
             }
             Value::Object(out)
@@ -633,12 +635,7 @@ fn build_condensed_summary_prompt(
     custom_instructions: Option<&str>,
 ) -> String {
     if depth <= 1 {
-        return build_d1_prompt(
-            text,
-            target_tokens,
-            previous_summary,
-            custom_instructions,
-        );
+        return build_d1_prompt(text, target_tokens, previous_summary, custom_instructions);
     }
     if depth == 2 {
         return build_d2_prompt(text, target_tokens, custom_instructions);
@@ -740,17 +737,14 @@ pub async fn create_lcm_summarize_from_legacy_params(
         return Ok(None);
     }
 
-    let auth_profile_id = legacy_params
-        .auth_profile_id
-        .clone()
-        .and_then(|value| {
-            let trimmed = value.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            }
-        });
+    let auth_profile_id = legacy_params.auth_profile_id.clone().and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    });
     let agent_dir = legacy_params.agent_dir.clone().and_then(|value| {
         let trimmed = value.trim();
         if trimmed.is_empty() {
@@ -818,7 +812,9 @@ pub async fn create_lcm_summarize_from_legacy_params(
                     .and_then(|opts| opts.depth)
                     .map(|depth| depth.max(1))
                     .unwrap_or(1);
-                let previous_summary = options.as_ref().and_then(|opts| opts.previous_summary.as_deref());
+                let previous_summary = options
+                    .as_ref()
+                    .and_then(|opts| opts.previous_summary.as_deref());
                 build_condensed_summary_prompt(
                     &text,
                     target_tokens,
@@ -827,7 +823,9 @@ pub async fn create_lcm_summarize_from_legacy_params(
                     custom_instructions.as_deref(),
                 )
             } else {
-                let previous_summary = options.as_ref().and_then(|opts| opts.previous_summary.as_deref());
+                let previous_summary = options
+                    .as_ref()
+                    .and_then(|opts| opts.previous_summary.as_deref());
                 build_leaf_summary_prompt(
                     &text,
                     mode,
@@ -897,7 +895,10 @@ pub async fn create_lcm_summarize_from_legacy_params(
                     "[lcm] empty normalized summary on first attempt".to_string(),
                     format!("provider={provider}"),
                     format!("model={model}"),
-                    format!("block_types={}", format_block_types(&normalized.block_types)),
+                    format!(
+                        "block_types={}",
+                        format_block_types(&normalized.block_types)
+                    ),
                     format!("response_blocks={}", result.content.len()),
                 ];
                 if !response_diag.is_empty() {
@@ -905,7 +906,10 @@ pub async fn create_lcm_summarize_from_legacy_params(
                 }
                 log_error(
                     &deps,
-                    format!("{}; retrying with conservative settings", diag_parts.join("; ")),
+                    format!(
+                        "{}; retrying with conservative settings",
+                        diag_parts.join("; ")
+                    ),
                 );
 
                 match deps
@@ -950,7 +954,10 @@ pub async fn create_lcm_summarize_from_legacy_params(
                                 "[lcm] retry also returned empty summary".to_string(),
                                 format!("provider={provider}"),
                                 format!("model={model}"),
-                                format!("block_types={}", format_block_types(&retry_normalized.block_types)),
+                                format!(
+                                    "block_types={}",
+                                    format_block_types(&retry_normalized.block_types)
+                                ),
                                 format!("response_blocks={}", retry_result.content.len()),
                             ];
                             if !retry_diag.is_empty() {

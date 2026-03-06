@@ -87,10 +87,22 @@ fn adds_depth_and_metadata_from_summary_lineage() {
         .execute(rusqlite::params!["sum_leaf_b", 1, "leaf", "leaf-b", 10])
         .expect("sum_leaf_b");
     insert_summary_stmt
-        .execute(rusqlite::params!["sum_condensed_1", 1, "condensed", "condensed-1", 10])
+        .execute(rusqlite::params![
+            "sum_condensed_1",
+            1,
+            "condensed",
+            "condensed-1",
+            10
+        ])
         .expect("sum_condensed_1");
     insert_summary_stmt
-        .execute(rusqlite::params!["sum_condensed_2", 1, "condensed", "condensed-2", 10])
+        .execute(rusqlite::params![
+            "sum_condensed_2",
+            1,
+            "condensed",
+            "condensed-2",
+            10
+        ])
         .expect("sum_condensed_2");
     insert_summary_stmt
         .execute(rusqlite::params![
@@ -112,7 +124,15 @@ fn adds_depth_and_metadata_from_summary_lineage() {
         )
         .expect("insert message stmt");
     insert_message_stmt
-        .execute(rusqlite::params![1, 1, 1, "user", "m1", 5, "2026-01-01 10:00:00"])
+        .execute(rusqlite::params![
+            1,
+            1,
+            1,
+            "user",
+            "m1",
+            5,
+            "2026-01-01 10:00:00"
+        ])
         .expect("msg1");
     insert_message_stmt
         .execute(rusqlite::params![
@@ -126,7 +146,15 @@ fn adds_depth_and_metadata_from_summary_lineage() {
         ])
         .expect("msg2");
     insert_message_stmt
-        .execute(rusqlite::params![3, 1, 3, "user", "m3", 5, "2026-01-01 12:45:00"])
+        .execute(rusqlite::params![
+            3,
+            1,
+            3,
+            "user",
+            "m3",
+            5,
+            "2026-01-01 12:45:00"
+        ])
         .expect("msg3");
     drop(insert_message_stmt);
 
@@ -226,8 +254,10 @@ fn adds_depth_and_metadata_from_summary_lineage() {
         all.push(row.expect("row"));
     }
 
-    let depth_by_summary_id: HashMap<String, i64> =
-        all.iter().map(|row| (row.summary_id.clone(), row.depth)).collect();
+    let depth_by_summary_id: HashMap<String, i64> = all
+        .iter()
+        .map(|row| (row.summary_id.clone(), row.depth))
+        .collect();
     let earliest_by_summary_id: HashMap<String, Option<String>> = all
         .iter()
         .map(|row| (row.summary_id.clone(), row.earliest_at.clone()))
@@ -303,23 +333,42 @@ fn adds_depth_and_metadata_from_summary_lineage() {
     assert!(parse_datetime(condensed2_earliest) <= parse_datetime(condensed2_latest));
     assert!(parse_datetime(condensed1_earliest) <= parse_datetime(leaf_a_earliest));
     assert!(parse_datetime(condensed1_latest) >= parse_datetime(leaf_b_latest));
-    assert!(earliest_by_summary_id
-        .get("sum_condensed_orphan")
-        .and_then(|v| v.as_deref())
-        .is_some());
-    assert!(latest_by_summary_id
-        .get("sum_condensed_orphan")
-        .and_then(|v| v.as_deref())
-        .is_some());
+    assert!(
+        earliest_by_summary_id
+            .get("sum_condensed_orphan")
+            .and_then(|v| v.as_deref())
+            .is_some()
+    );
+    assert!(
+        latest_by_summary_id
+            .get("sum_condensed_orphan")
+            .and_then(|v| v.as_deref())
+            .is_some()
+    );
 
     assert_eq!(descendant_count_by_summary_id.get("sum_leaf_a"), Some(&0));
     assert_eq!(descendant_count_by_summary_id.get("sum_leaf_b"), Some(&0));
-    assert_eq!(descendant_count_by_summary_id.get("sum_condensed_1"), Some(&2));
-    assert_eq!(descendant_count_by_summary_id.get("sum_condensed_2"), Some(&3));
-    assert_eq!(descendant_count_by_summary_id.get("sum_condensed_orphan"), Some(&0));
+    assert_eq!(
+        descendant_count_by_summary_id.get("sum_condensed_1"),
+        Some(&2)
+    );
+    assert_eq!(
+        descendant_count_by_summary_id.get("sum_condensed_2"),
+        Some(&3)
+    );
+    assert_eq!(
+        descendant_count_by_summary_id.get("sum_condensed_orphan"),
+        Some(&0)
+    );
 
-    assert_eq!(descendant_token_count_by_summary_id.get("sum_leaf_a"), Some(&0));
-    assert_eq!(descendant_token_count_by_summary_id.get("sum_leaf_b"), Some(&0));
+    assert_eq!(
+        descendant_token_count_by_summary_id.get("sum_leaf_a"),
+        Some(&0)
+    );
+    assert_eq!(
+        descendant_token_count_by_summary_id.get("sum_leaf_b"),
+        Some(&0)
+    );
     assert_eq!(
         descendant_token_count_by_summary_id.get("sum_condensed_1"),
         Some(&20)
@@ -333,8 +382,14 @@ fn adds_depth_and_metadata_from_summary_lineage() {
         Some(&0)
     );
 
-    assert_eq!(source_message_token_count_by_summary_id.get("sum_leaf_a"), Some(&10));
-    assert_eq!(source_message_token_count_by_summary_id.get("sum_leaf_b"), Some(&5));
+    assert_eq!(
+        source_message_token_count_by_summary_id.get("sum_leaf_a"),
+        Some(&10)
+    );
+    assert_eq!(
+        source_message_token_count_by_summary_id.get("sum_leaf_b"),
+        Some(&5)
+    );
     assert_eq!(
         source_message_token_count_by_summary_id.get("sum_condensed_1"),
         Some(&15)

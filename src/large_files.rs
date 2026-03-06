@@ -19,17 +19,13 @@ fn format_number_en_us(value: i64) -> String {
         }
         out.push(ch);
     }
-    if negative {
-        format!("-{}", out)
-    } else {
-        out
-    }
+    if negative { format!("-{}", out) } else { out }
 }
 
 fn code_extensions() -> HashSet<&'static str> {
     [
-        "c", "cc", "cpp", "cs", "go", "h", "hpp", "java", "js", "jsx", "kt", "m", "php",
-        "py", "rb", "rs", "scala", "sh", "sql", "swift", "ts", "tsx",
+        "c", "cc", "cpp", "cs", "go", "h", "hpp", "java", "js", "jsx", "kt", "m", "php", "py",
+        "rb", "rs", "scala", "sh", "sql", "swift", "ts", "tsx",
     ]
     .into_iter()
     .collect()
@@ -142,7 +138,9 @@ fn collect_file_name_extension(file_name: Option<&str>) -> Option<String> {
 
 fn guess_mime_extension(mime_type: Option<&str>) -> Option<String> {
     let normalized = mime_type?.trim().to_lowercase();
-    mime_extension_map().get(normalized.as_str()).map(|v| v.to_string())
+    mime_extension_map()
+        .get(normalized.as_str())
+        .map(|v| v.to_string())
 }
 
 fn is_structured(mime_type: Option<&str>, extension: Option<&str>) -> bool {
@@ -232,7 +230,12 @@ fn explore_json(content: &str) -> String {
         if let Some(obj) = value.as_object() {
             let mut keys = obj.keys().cloned().collect::<Vec<String>>();
             keys.sort();
-            let preview = keys.iter().take(10).cloned().collect::<Vec<String>>().join(", ");
+            let preview = keys
+                .iter()
+                .take(10)
+                .cloned()
+                .collect::<Vec<String>>()
+                .join(", ");
             return format!(
                 "object(keys={}{}{})",
                 keys.len(),
@@ -314,7 +317,10 @@ fn explore_yaml(content: &str) -> String {
         if keys.is_empty() {
             "(none detected)".to_string()
         } else {
-            keys.into_iter().take(30).collect::<Vec<String>>().join(", ")
+            keys.into_iter()
+                .take(30)
+                .collect::<Vec<String>>()
+                .join(", ")
         }
     )
 }
@@ -343,8 +349,13 @@ fn explore_xml(content: &str) -> String {
     )
 }
 
-pub fn explore_structured_data(content: &str, mime_type: Option<&str>, file_name: Option<&str>) -> String {
-    let extension = collect_file_name_extension(file_name).or_else(|| guess_mime_extension(mime_type));
+pub fn explore_structured_data(
+    content: &str,
+    mime_type: Option<&str>,
+    file_name: Option<&str>,
+) -> String {
+    let extension =
+        collect_file_name_extension(file_name).or_else(|| guess_mime_extension(mime_type));
     let normalized_mime = mime_type.unwrap_or_default().trim().to_lowercase();
 
     if extension.as_deref() == Some("json") || normalized_mime.starts_with("application/json") {
@@ -406,13 +417,21 @@ pub fn explore_code(content: &str, file_name: Option<&str>) -> String {
         if imports.is_empty() {
             "none detected".to_string()
         } else {
-            imports.into_iter().take(12).collect::<Vec<String>>().join(" | ")
+            imports
+                .into_iter()
+                .take(12)
+                .collect::<Vec<String>>()
+                .join(" | ")
         },
         format_number_en_us(signatures.len() as i64),
         if signatures.is_empty() {
             "none detected".to_string()
         } else {
-            signatures.into_iter().take(24).collect::<Vec<String>>().join(" | ")
+            signatures
+                .into_iter()
+                .take(24)
+                .collect::<Vec<String>>()
+                .join(" | ")
         }
     )
 }
@@ -447,7 +466,12 @@ fn build_text_sample(content: &str) -> String {
     )
 }
 
-fn build_text_prompt(content: &str, file_name: Option<&str>, mime_type: Option<&str>, headers: &[String]) -> String {
+fn build_text_prompt(
+    content: &str,
+    file_name: Option<&str>,
+    mime_type: Option<&str>,
+    headers: &[String],
+) -> String {
     let sample = build_text_sample(content);
     format!(
         "Summarize this large file for retrieval-time context references.\nFile name: {}\nMime type: {}\nLength: {} chars\nLine count: {}\n{}\nProduce 200-300 words with:\n- What the document is about\n- Key sections and topics\n- Important names, dates, and numbers\n- Any action items or constraints\nDo not quote long passages verbatim.\n\nDocument sample:\n{}",
@@ -482,9 +506,7 @@ fn explore_text_deterministic_fallback(content: &str, file_name: Option<&str>) -
     );
     format!(
         "Text exploration summary{}:\nCharacters: {}.\nWords: {}.\nLines: {}.\nDetected section headers: {}.\nOpening excerpt: {}.\nClosing excerpt: {}.",
-        file_name
-            .map(|n| format!(" ({})", n))
-            .unwrap_or_default(),
+        file_name.map(|n| format!(" ({})", n)).unwrap_or_default(),
         format_number_en_us(content.len() as i64),
         format_number_en_us(word_count as i64),
         format_number_en_us(line_count as i64),
@@ -493,8 +515,16 @@ fn explore_text_deterministic_fallback(content: &str, file_name: Option<&str>) -
         } else {
             headers.join(" | ")
         },
-        if first.is_empty() { "(empty)".to_string() } else { first },
-        if last.is_empty() { "(empty)".to_string() } else { last }
+        if first.is_empty() {
+            "(empty)".to_string()
+        } else {
+            first
+        },
+        if last.is_empty() {
+            "(empty)".to_string()
+        } else {
+            last
+        }
     )
 }
 

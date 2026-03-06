@@ -1,8 +1,12 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
-use crate::store::conversation_store::{ConversationStore, MessageSearchInput, MessageSearchResult};
-use crate::store::summary_store::{SummaryKind, SummarySearchInput, SummarySearchResult, SummaryStore};
+use crate::store::conversation_store::{
+    ConversationStore, MessageSearchInput, MessageSearchResult,
+};
+use crate::store::summary_store::{
+    SummaryKind, SummarySearchInput, SummarySearchResult, SummaryStore,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct DescribeSummary {
@@ -256,7 +260,8 @@ impl RetrievalEngine {
                         if result.truncated {
                             break;
                         }
-                        let Some(msg) = self.conversation_store.get_message_by_id(message_id)? else {
+                        let Some(msg) = self.conversation_store.get_message_by_id(message_id)?
+                        else {
                             continue;
                         };
                         let token_count = if msg.token_count > 0 {
@@ -307,14 +312,16 @@ impl RetrievalApi for RetrievalEngine {
         let mut messages = vec![];
         let mut summaries = vec![];
         if input.scope == "messages" {
-            messages = self.conversation_store.search_messages(MessageSearchInput {
-                conversation_id: input.conversation_id,
-                query: input.query.clone(),
-                mode: input.mode.clone(),
-                since: input.since,
-                before: input.before,
-                limit: input.limit,
-            })?;
+            messages = self
+                .conversation_store
+                .search_messages(MessageSearchInput {
+                    conversation_id: input.conversation_id,
+                    query: input.query.clone(),
+                    mode: input.mode.clone(),
+                    since: input.since,
+                    before: input.before,
+                    limit: input.limit,
+                })?;
         } else if input.scope == "summaries" {
             summaries = self.summary_store.search_summaries(SummarySearchInput {
                 conversation_id: input.conversation_id,
@@ -325,14 +332,16 @@ impl RetrievalApi for RetrievalEngine {
                 limit: input.limit,
             })?;
         } else {
-            messages = self.conversation_store.search_messages(MessageSearchInput {
-                conversation_id: input.conversation_id,
-                query: input.query.clone(),
-                mode: input.mode.clone(),
-                since: input.since,
-                before: input.before,
-                limit: input.limit,
-            })?;
+            messages = self
+                .conversation_store
+                .search_messages(MessageSearchInput {
+                    conversation_id: input.conversation_id,
+                    query: input.query.clone(),
+                    mode: input.mode.clone(),
+                    since: input.since,
+                    before: input.before,
+                    limit: input.limit,
+                })?;
             summaries = self.summary_store.search_summaries(SummarySearchInput {
                 conversation_id: input.conversation_id,
                 query: input.query.clone(),

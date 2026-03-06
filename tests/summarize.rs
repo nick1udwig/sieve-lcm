@@ -65,13 +65,12 @@ impl TestDeps {
                 })))
             })
         });
-        let resolve_model_handler: ResolveModelHandler =
-            Arc::new(|_model_ref, _provider_hint| {
-                Ok(ModelRef {
-                    provider: "anthropic".to_string(),
-                    model: "claude-opus-4-5".to_string(),
-                })
-            });
+        let resolve_model_handler: ResolveModelHandler = Arc::new(|_model_ref, _provider_hint| {
+            Ok(ModelRef {
+                provider: "anthropic".to_string(),
+                model: "claude-opus-4-5".to_string(),
+            })
+        });
         let get_api_key_handler: GetApiKeyHandler =
             Arc::new(|_provider, _model| Some("test-api-key".to_string()));
 
@@ -420,12 +419,8 @@ async fn logs_provider_model_block_diagnostics_when_summary_is_empty() {
             })))
         })
     }));
-    let summarize = build_summarizer(
-        deps.clone(),
-        basic_legacy("openai", "gpt-5.3-codex"),
-        None,
-    )
-    .await;
+    let summarize =
+        build_summarizer(deps.clone(), basic_legacy("openai", "gpt-5.3-codex"), None).await;
 
     let summary = summarize("A".repeat(12_000), false, None).await;
     assert!(summary.contains("[LCM fallback summary; truncated for context management]"));
@@ -464,12 +459,8 @@ async fn retries_with_conservative_settings_when_first_attempt_returns_empty_arr
         })
     }));
 
-    let summarize = build_summarizer(
-        deps.clone(),
-        basic_legacy("openai", "gpt-5.3-codex"),
-        None,
-    )
-    .await;
+    let summarize =
+        build_summarizer(deps.clone(), basic_legacy("openai", "gpt-5.3-codex"), None).await;
     let summary = summarize("A".repeat(8_000), false, None).await;
 
     assert_eq!(summary, "Recovered summary from retry.");
@@ -535,12 +526,8 @@ async fn falls_back_gracefully_when_retry_throws_exception() {
         })
     }));
 
-    let summarize = build_summarizer(
-        deps.clone(),
-        basic_legacy("openai", "gpt-5.3-codex"),
-        None,
-    )
-    .await;
+    let summarize =
+        build_summarizer(deps.clone(), basic_legacy("openai", "gpt-5.3-codex"), None).await;
     let summary = summarize("C".repeat(10_000), false, None).await;
     assert!(summary.contains("[LCM fallback summary; truncated for context management]"));
 
@@ -586,12 +573,8 @@ async fn logs_response_envelope_metadata_in_diagnostics() {
         })
     }));
 
-    let summarize = build_summarizer(
-        deps.clone(),
-        basic_legacy("openai", "gpt-5.3-codex"),
-        None,
-    )
-    .await;
+    let summarize =
+        build_summarizer(deps.clone(), basic_legacy("openai", "gpt-5.3-codex"), None).await;
     summarize("D".repeat(8_000), false, None).await;
 
     let diagnostics = deps.error_log_text();
@@ -636,12 +619,8 @@ async fn redacts_sensitive_keys_from_diagnostic_content_previews() {
         })
     }));
 
-    let summarize = build_summarizer(
-        deps.clone(),
-        basic_legacy("openai", "gpt-5.3-codex"),
-        None,
-    )
-    .await;
+    let summarize =
+        build_summarizer(deps.clone(), basic_legacy("openai", "gpt-5.3-codex"), None).await;
     summarize("E".repeat(8_000), false, None).await;
 
     let diagnostics = deps.error_log_text();
@@ -684,12 +663,8 @@ async fn recovers_summary_from_top_level_output_text_when_content_is_empty() {
         })
     }));
 
-    let summarize = build_summarizer(
-        deps.clone(),
-        basic_legacy("openai", "gpt-5.3-codex"),
-        None,
-    )
-    .await;
+    let summarize =
+        build_summarizer(deps.clone(), basic_legacy("openai", "gpt-5.3-codex"), None).await;
     let summary = summarize("A".repeat(8_000), false, None).await;
 
     assert_eq!(summary, "Summary recovered from envelope output_text.");
@@ -760,12 +735,8 @@ async fn recovers_from_envelope_when_content_has_reasoning_only_blocks() {
         })
     }));
 
-    let summarize = build_summarizer(
-        deps.clone(),
-        basic_legacy("openai", "gpt-5.3-codex"),
-        None,
-    )
-    .await;
+    let summarize =
+        build_summarizer(deps.clone(), basic_legacy("openai", "gpt-5.3-codex"), None).await;
     let summary = summarize("C".repeat(8_000), false, None).await;
 
     assert_eq!(summary, "Actual summary after reasoning.");
@@ -835,12 +806,8 @@ async fn deduplicates_text_found_in_content_and_envelope_output() {
         })
     }));
 
-    let summarize = build_summarizer(
-        deps.clone(),
-        basic_legacy("openai", "gpt-5.3-codex"),
-        None,
-    )
-    .await;
+    let summarize =
+        build_summarizer(deps.clone(), basic_legacy("openai", "gpt-5.3-codex"), None).await;
     let summary = summarize("E".repeat(4_000), false, None).await;
     assert_eq!(summary, "Deduplicated summary.");
     assert_eq!(deps.complete_calls().len(), 1);

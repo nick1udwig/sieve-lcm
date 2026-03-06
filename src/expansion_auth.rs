@@ -66,7 +66,10 @@ impl ExpansionAuthManager {
     pub fn create_grant(&mut self, input: CreateGrantInput) -> ExpansionGrant {
         let now = Utc::now();
         let grant = ExpansionGrant {
-            grant_id: format!("grant_{}", Uuid::new_v4().simple().to_string()[..12].to_string()),
+            grant_id: format!(
+                "grant_{}",
+                Uuid::new_v4().simple().to_string()[..12].to_string()
+            ),
             issuer_session_id: input.issuer_session_id,
             allowed_conversation_ids: input.allowed_conversation_ids,
             allowed_summary_ids: input.allowed_summary_ids.unwrap_or_default(),
@@ -212,7 +215,9 @@ pub fn get_runtime_expansion_auth_manager() -> Arc<Mutex<ExpansionAuthManager>> 
     RUNTIME_MANAGER.clone()
 }
 
-pub fn create_delegated_expansion_grant(input: CreateDelegatedExpansionGrantInput) -> ExpansionGrant {
+pub fn create_delegated_expansion_grant(
+    input: CreateDelegatedExpansionGrantInput,
+) -> ExpansionGrant {
     let delegated_session_key = input.delegated_session_key.trim().to_string();
     assert!(
         !delegated_session_key.is_empty(),
