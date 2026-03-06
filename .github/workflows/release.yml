@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Semantic version bump to release
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event_name != 'push' || (github.actor != 'github-actions[bot]' && !startsWith(github.event.head_commit.message, 'release: '))
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version and create tag
+        id: version
+        env:
+          BUMP: ${{ github.event_name == 'workflow_dispatch' && inputs.bump || 'patch' }}
+        run: |
+          current_version="$(tr -d '[:space:]' < VERSION)"
+          if [[ ! "$current_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "VERSION must contain a semantic version, found: $current_version" >&2
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+
+          case "$BUMP" in
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            patch)
+              patch=$((patch + 1))
+              ;;
+            *)
+              echo "unsupported bump type: $BUMP" >&2
+              exit 1
+              ;;
+          esac
+
+          new_version="${major}.${minor}.${patch}"
+          tag="v${new_version}"
+          asset="sieve-lcm-cli_${new_version}_linux_amd64.tar.gz"
+
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "tag already exists locally: ${tag}" >&2
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "${tag}" >/dev/null 2>&1; then
+            echo "tag already exists on origin: ${tag}" >&2
+            exit 1
+          fi
+
+          printf '%s\n' "$new_version" > VERSION
+          NEW_VERSION="$new_version" perl -0pi -e 's/(\[package\]\nname = "sieve-lcm"\nversion = ")[^"]+(")/$1$ENV{NEW_VERSION}$2/' Cargo.toml
+          NEW_VERSION="$new_version" perl -0pi -e 's/(name = "sieve-lcm"\nversion = ")[^"]+(")/$1$ENV{NEW_VERSION}$2/' Cargo.lock
+
+          echo "version=${new_version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "asset=${asset}" >> "$GITHUB_OUTPUT"
+
+      - name: Commit version bump
+        run: |
+          git add VERSION Cargo.toml Cargo.lock
+          git commit -m "release: ${{ steps.version.outputs.tag }}"
+          git tag "${{ steps.version.outputs.tag }}"
+
+      - name: Build release artifact
+        run: |
+          mkdir -p dist
+          cargo build --release --locked --bin sieve-lcm-cli
+          install -m 0755 target/release/sieve-lcm-cli dist/sieve-lcm-cli
+          tar -C dist -czf "dist/${{ steps.version.outputs.asset }}" sieve-lcm-cli
+
+      - name: Push release commit and tag
+        run: |
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" "dist/${{ steps.version.outputs.asset }}" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --notes "Release ${{ steps.version.outputs.tag }}"
