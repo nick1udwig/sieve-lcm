@@ -27,6 +27,9 @@ jobs:
   release:
     if: github.event_name != 'push' || github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    env:
+      BINARY_NAME: sieve-lcm-cli
+      TARGET_OS: linux
 
     steps:
       - name: Check out repository
@@ -36,6 +39,13 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Install arm64 linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Configure git identity
         run: |
@@ -78,7 +88,6 @@ jobs:
 
           new_version="${major}.${minor}.${patch}"
           tag="v${new_version}"
-          asset="sieve-lcm-cli_${new_version}_linux_amd64.tar.gz"
 
           if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
             echo "tag already exists locally: ${tag}" >&2
@@ -96,7 +105,6 @@ jobs:
 
           echo "version=${new_version}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "asset=${asset}" >> "$GITHUB_OUTPUT"
 
       - name: Commit version bump
         run: |
@@ -105,11 +113,33 @@ jobs:
           git tag "${{ steps.version.outputs.tag }}"
 
       - name: Build release artifact
+        env:
+          AR_aarch64_unknown_linux_gnu: aarch64-linux-gnu-ar
+          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: |
           mkdir -p dist
-          cargo build --release --locked --bin sieve-lcm-cli
-          install -m 0755 target/release/sieve-lcm-cli dist/sieve-lcm-cli
-          tar -C dist -czf "dist/${{ steps.version.outputs.asset }}" sieve-lcm-cli
+          for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+            case "$target" in
+              x86_64-unknown-linux-gnu)
+                arch=amd64
+                ;;
+              aarch64-unknown-linux-gnu)
+                arch=arm64
+                ;;
+              *)
+                echo "unsupported target: $target" >&2
+                exit 1
+                ;;
+            esac
+
+            build_dir="dist/${TARGET_OS}_${arch}"
+            asset="${BINARY_NAME}_${{ steps.version.outputs.version }}_${TARGET_OS}_${arch}.tar.gz"
+            mkdir -p "${build_dir}"
+            cargo build --release --locked --bin "${BINARY_NAME}" --target "$target"
+            install -m 0755 "target/${target}/release/${BINARY_NAME}" "${build_dir}/${BINARY_NAME}"
+            tar -C "${build_dir}" -czf "dist/${asset}" "${BINARY_NAME}"
+          done
 
       - name: Push release commit and tag
         run: |
@@ -120,6 +150,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" "dist/${{ steps.version.outputs.asset }}" \
+          gh release create "${{ steps.version.outputs.tag }}" dist/*.tar.gz \
             --title "${{ steps.version.outputs.tag }}" \
             --notes "Release ${{ steps.version.outputs.tag }}"
