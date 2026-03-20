@@ -9,6 +9,7 @@ pub mod expansion_auth;
 pub mod expansion_policy;
 pub mod integrity;
 pub mod large_files;
+pub mod planner_context;
 pub mod retrieval;
 pub mod store;
 pub mod summarize;
